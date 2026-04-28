@@ -1,113 +1,209 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Traffic Simulation</title>
+  <meta charset="UTF-8">
+  <title>4-Way Traffic Simulation</title>
+
   <style>
     body {
-      font-family: Arial;
+      font-family: Arial, sans-serif;
       text-align: center;
       background: #f2f2f2;
     }
 
     canvas {
-      background: #ddd;
+      background: #6b6b6b;
       display: block;
       margin: 20px auto;
-      border: 2px solid #333;
+      border: 2px solid #222;
     }
 
     button {
       padding: 10px 15px;
       font-size: 16px;
+      cursor: pointer;
+    }
+
+    #status {
+      font-size: 18px;
+      font-weight: bold;
       margin-top: 10px;
     }
   </style>
 </head>
+
 <body>
 
-<h1>🚦 Traffic Simulation (Visual)</h1>
-<button onclick="startSimulation()">Start</button>
+<h1>🚦 4-Way Intersection Simulation</h1>
+<button onclick="start()">Start Simulation</button>
 
-<canvas id="canvas" width="500" height="500"></canvas>
+<div id="status"></div>
+
+<canvas id="c" width="600" height="600"></canvas>
 
 <script>
-const canvas = document.getElementById("canvas");
+const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
+const statusDiv = document.getElementById("status");
 
 let cars = [];
-let laneOrder = [0, 1, 2, 3];
-let timeStep = 0;
 let running = false;
+let green = 0;
+let crashed = false;
 
-// Create cars
-function initCars() {
-    cars = [];
-    const nCars = 80;
+// 🚗 spawn car
+function spawnCar() {
+  const dir = Math.floor(Math.random() * 4);
 
-    for (let i = 0; i < nCars; i++) {
-        let lane = Math.floor(Math.random() * 4);
+  let car = {
+    dir,
+    speed: 1.6 + Math.random() * 0.8,
+    x: 0,
+    y: 0
+  };
 
-        cars.push({
-            lane: lane,
-            x: 100 + lane * 80,
-            y: Math.random() * 500,
-            speed: 1 + Math.random() * 1.5,
-            active: true
-        });
-    }
+  if (dir === 0) { car.x = 290; car.y = 650; }
+  if (dir === 1) { car.x = -40; car.y = 290; }
+  if (dir === 2) { car.x = 310; car.y = -40; }
+  if (dir === 3) { car.x = 650; car.y = 310; }
+
+  cars.push(car);
 }
 
-// Draw road + cars
-function draw() {
-    ctx.clearRect(0, 0, 500, 500);
-
-    // roads
-    for (let i = 1; i < 4; i++) {
-        ctx.fillStyle = "#999";
-        ctx.fillRect(i * 80 + 40, 0, 10, 500);
-    }
-
-    // traffic light indicator
-    let activeLane = laneOrder[timeStep % 4];
-    ctx.fillStyle = "black";
-    ctx.fillText("Green lane: " + activeLane, 10, 20);
-
-    // draw cars
-    cars.forEach(car => {
-        if (!car.active) return;
-
-        // only active lane moves
-        if (car.lane === activeLane) {
-            car.y -= car.speed;
-        }
-
-        // remove car if it exits screen
-        if (car.y < -20) car.active = false;
-
-        ctx.fillStyle = ["red", "blue", "green", "orange"][car.lane];
-        ctx.fillRect(car.x, car.y, 20, 10);
-    });
+// 🛣️ road
+function drawRoad() {
+  ctx.fillStyle = "#555";
+  ctx.fillRect(250, 0, 100, 600);
+  ctx.fillRect(0, 250, 600, 100);
 }
 
-// animation loop
+// 🚦 lights
+function drawLights() {
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = (i === green) ? "lime" : "red";
+
+    if (i === 0) ctx.fillRect(275, 200, 10, 10);
+    if (i === 1) ctx.fillRect(380, 275, 10, 10);
+    if (i === 2) ctx.fillRect(275, 380, 10, 10);
+    if (i === 3) ctx.fillRect(200, 275, 10, 10);
+  }
+}
+
+// 🚧 stop line
+function atStopLine(c) {
+  if (c.dir === 0 && c.y <= 330) return true;
+  if (c.dir === 2 && c.y >= 270) return true;
+  if (c.dir === 1 && c.x >= 270) return true;
+  if (c.dir === 3 && c.x <= 330) return true;
+  return false;
+}
+
+// 🧠 front-of-lane check
+function isFrontCar(car) {
+  return !cars.some(other =>
+    other.dir === car.dir &&
+    (
+      (car.dir === 0 && other.y > car.y) ||
+      (car.dir === 2 && other.y < car.y) ||
+      (car.dir === 1 && other.x < car.x) ||
+      (car.dir === 3 && other.x > car.x)
+    )
+  );
+}
+
+// 💥 collision detection (SIMULATION FAIL CONDITION)
+function checkCollision() {
+  for (let i = 0; i < cars.length; i++) {
+    for (let j = i + 1; j < cars.length; j++) {
+      const a = cars[i];
+      const b = cars[j];
+
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < 10) {
+        crash();
+        return;
+      }
+    }
+  }
+}
+
+// 💥 crash handler
+function crash() {
+  crashed = true;
+  running = false;
+  statusDiv.textContent = "💥 COLLISION DETECTED — SIMULATION FAILED";
+}
+
+// 🚗 update cars
+function updateCar(c) {
+  const canGo = c.dir === green;
+
+  if (!canGo && atStopLine(c)) return;
+
+  const front = isFrontCar(c);
+
+  const inCenter =
+    c.x > 260 && c.x < 340 &&
+    c.y > 260 && c.y < 340;
+
+  if (inCenter && !front) return;
+
+  if (c.dir === 0) c.y -= c.speed;
+  if (c.dir === 1) c.x += c.speed;
+  if (c.dir === 2) c.y += c.speed;
+  if (c.dir === 3) c.x -= c.speed;
+}
+
+// 🎨 draw cars (ALL SAME COLOR NOW)
+function drawCars() {
+  ctx.fillStyle = "#00aaff"; // single unified color
+
+  cars.forEach(c => {
+    ctx.fillRect(c.x, c.y, 12, 12);
+  });
+}
+
+// 🔁 loop
 function loop() {
-    if (!running) return;
+  if (!running) return;
 
-    draw();
+  ctx.clearRect(0, 0, 600, 600);
 
-    requestAnimationFrame(loop);
+  drawRoad();
+  drawLights();
+
+  cars.forEach(updateCar);
+  drawCars();
+
+  checkCollision();
+
+  cars = cars.filter(c =>
+    c.x > -100 && c.x < 700 && c.y > -100 && c.y < 700
+  );
+
+  requestAnimationFrame(loop);
 }
 
-// change traffic light every ~2 seconds
+// 🚦 traffic switch
 setInterval(() => {
-    if (!running) return;
-    timeStep++;
+  if (running) green = (green + 1) % 4;
 }, 2000);
 
-function startSimulation() {
-    initCars();
-    running = true;
-    loop();
+// 🚗 spawn cars
+setInterval(() => {
+  if (running && !crashed) spawnCar();
+}, 500);
+
+// ▶ start
+function start() {
+  cars = [];
+  crashed = false;
+  running = true;
+  statusDiv.textContent = "";
+  loop();
 }
 </script>
 
