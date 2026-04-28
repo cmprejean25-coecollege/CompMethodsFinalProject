@@ -1,42 +1,41 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>4-Way Traffic Simulation</title>
+<meta charset="UTF-8">
+<title>4-Way Traffic Simulation </title> 
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      background: #f2f2f2;
-    }
+<style>
+  body {
+    font-family: Arial;
+    text-align: center;
+    background: #f2f2f2;
+  }
 
-    canvas {
-      background: #6b6b6b;
-      display: block;
-      margin: 20px auto;
-      border: 2px solid #222;
-    }
+  canvas {
+    background: #6b6b6b;
+    display: block;
+    margin: 20px auto;
+    border: 2px solid #222;
+  }
 
-    button {
-      padding: 10px 15px;
-      font-size: 16px;
-      cursor: pointer;
-    }
+  button {
+    padding: 10px 15px;
+    font-size: 16px;
+    cursor: pointer;
+  }
 
-    #status {
-      font-size: 18px;
-      font-weight: bold;
-      margin-top: 10px;
-    }
-  </style>
+  #status {
+    font-size: 18px;
+    font-weight: bold;
+    margin-top: 10px;
+  }
+</style>
 </head>
 
 <body>
 
 <h1>🚦 4-Way Intersection Simulation</h1>
 <button onclick="start()">Start Simulation</button>
-
 <div id="status"></div>
 
 <canvas id="c" width="600" height="600"></canvas>
@@ -59,7 +58,8 @@ function spawnCar() {
     dir,
     speed: 1.6 + Math.random() * 0.8,
     x: 0,
-    y: 0
+    y: 0,
+    entered: false
   };
 
   if (dir === 0) { car.x = 290; car.y = 650; }
@@ -98,20 +98,25 @@ function atStopLine(c) {
   return false;
 }
 
-// 🧠 front-of-lane check
-function isFrontCar(car) {
-  return !cars.some(other =>
-    other.dir === car.dir &&
-    (
-      (car.dir === 0 && other.y > car.y) ||
-      (car.dir === 2 && other.y < car.y) ||
-      (car.dir === 1 && other.x < car.x) ||
-      (car.dir === 3 && other.x > car.x)
-    )
-  );
+// 🚗 SAFE FOLLOWING DISTANCE (NEW CORE FIX)
+function isTooClose(car) {
+  const SAFE_DISTANCE = 18;
+
+  for (let other of cars) {
+    if (other === car) continue;
+    if (other.dir !== car.dir) continue;
+
+    // same lane ahead checks
+    if (car.dir === 0 && other.y < car.y && car.y - other.y < SAFE_DISTANCE) return true;
+    if (car.dir === 2 && other.y > car.y && other.y - car.y < SAFE_DISTANCE) return true;
+    if (car.dir === 1 && other.x > car.x && other.x - car.x < SAFE_DISTANCE) return true;
+    if (car.dir === 3 && other.x < car.x && car.x - other.x < SAFE_DISTANCE) return true;
+  }
+
+  return false;
 }
 
-// 💥 collision detection (SIMULATION FAIL CONDITION)
+// 💥 collision detection (still safety fallback)
 function checkCollision() {
   for (let i = 0; i < cars.length; i++) {
     for (let j = i + 1; j < cars.length; j++) {
@@ -120,49 +125,65 @@ function checkCollision() {
 
       const dx = a.x - b.x;
       const dy = a.y - b.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
 
-      if (dist < 10) {
-        crash();
+      if (Math.sqrt(dx * dx + dy * dy) < 10) {
+        crashed = true;
+        running = false;
+        statusDiv.textContent = "💥 COLLISION DETECTED — SIMULATION FAILED";
         return;
       }
     }
   }
 }
 
-// 💥 crash handler
-function crash() {
-  crashed = true;
-  running = false;
-  statusDiv.textContent = "💥 COLLISION DETECTED — SIMULATION FAILED";
-}
-
-// 🚗 update cars
+// 🚗 update cars (UPDATED LOGIC)
 function updateCar(c) {
   const canGo = c.dir === green;
 
-  if (!canGo && atStopLine(c)) return;
+  if (!c.entered && !atStopLine(c)) {
+    c.entered = true;
+  }
 
-  const front = isFrontCar(c);
+  // 🚦 red light only before entering intersection
+  if (!canGo && !c.entered && atStopLine(c)) return;
 
-  const inCenter =
-    c.x > 260 && c.x < 340 &&
-    c.y > 260 && c.y < 340;
+  // 🚗 prevent rear-ending (NEW)
+  if (isTooClose(c)) return;
 
-  if (inCenter && !front) return;
-
+  // movement
   if (c.dir === 0) c.y -= c.speed;
   if (c.dir === 1) c.x += c.speed;
   if (c.dir === 2) c.y += c.speed;
   if (c.dir === 3) c.x -= c.speed;
 }
 
-// 🎨 draw cars (ALL SAME COLOR NOW)
+// 🚗 draw cars (with headlights)
 function drawCars() {
-  ctx.fillStyle = "#00aaff"; // single unified color
-
   cars.forEach(c => {
+    ctx.fillStyle = "#00aaff";
     ctx.fillRect(c.x, c.y, 12, 12);
+
+    ctx.fillStyle = "yellow";
+
+    if (c.dir === 0) {
+      ctx.fillRect(c.x + 3, c.y - 2, 2, 2);
+      ctx.fillRect(c.x + 7, c.y - 2, 2, 2);
+    }
+
+    if (c.dir === 1) {
+      ctx.fillRect(c.x + 12, c.y + 3, 2, 2);
+      ctx.fillRect(c.x + 12, c.y + 7, 2, 2);
+    }
+
+    if (c.dir === 2) {
+      ctx.fillRect(c.x + 3, c.y + 12, 2, 2);
+      ctx.fillRect(c.x + 7, c.y + 12, 2, 2);
+    }
+
+    if (c.dir === 3) {
+      ctx.fillRect(c.x - 2, c.y + 3, 2, 2);
+      ctx.fillRect(c.x - 2, c.y + 7, 2, 2);
+    }
   });
 }
 
