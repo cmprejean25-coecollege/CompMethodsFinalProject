@@ -1,10 +1,115 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>My GitHub Page</title>
+  <title>Traffic Simulation</title>
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      background: #f2f2f2;
+    }
+
+    canvas {
+      background: #ddd;
+      display: block;
+      margin: 20px auto;
+      border: 2px solid #333;
+    }
+
+    button {
+      padding: 10px 15px;
+      font-size: 16px;
+      margin-top: 10px;
+    }
+  </style>
 </head>
 <body>
-  <h1>Hello GitHub Pages 👋</h1>
-  <p>If you see this, it’s working.</p>
+
+<h1>🚦 Traffic Simulation (Visual)</h1>
+<button onclick="startSimulation()">Start</button>
+
+<canvas id="canvas" width="500" height="500"></canvas>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let cars = [];
+let laneOrder = [0, 1, 2, 3];
+let timeStep = 0;
+let running = false;
+
+// Create cars
+function initCars() {
+    cars = [];
+    const nCars = 80;
+
+    for (let i = 0; i < nCars; i++) {
+        let lane = Math.floor(Math.random() * 4);
+
+        cars.push({
+            lane: lane,
+            x: 100 + lane * 80,
+            y: Math.random() * 500,
+            speed: 1 + Math.random() * 1.5,
+            active: true
+        });
+    }
+}
+
+// Draw road + cars
+function draw() {
+    ctx.clearRect(0, 0, 500, 500);
+
+    // roads
+    for (let i = 1; i < 4; i++) {
+        ctx.fillStyle = "#999";
+        ctx.fillRect(i * 80 + 40, 0, 10, 500);
+    }
+
+    // traffic light indicator
+    let activeLane = laneOrder[timeStep % 4];
+    ctx.fillStyle = "black";
+    ctx.fillText("Green lane: " + activeLane, 10, 20);
+
+    // draw cars
+    cars.forEach(car => {
+        if (!car.active) return;
+
+        // only active lane moves
+        if (car.lane === activeLane) {
+            car.y -= car.speed;
+        }
+
+        // remove car if it exits screen
+        if (car.y < -20) car.active = false;
+
+        ctx.fillStyle = ["red", "blue", "green", "orange"][car.lane];
+        ctx.fillRect(car.x, car.y, 20, 10);
+    });
+}
+
+// animation loop
+function loop() {
+    if (!running) return;
+
+    draw();
+
+    requestAnimationFrame(loop);
+}
+
+// change traffic light every ~2 seconds
+setInterval(() => {
+    if (!running) return;
+    timeStep++;
+}, 2000);
+
+function startSimulation() {
+    initCars();
+    running = true;
+    loop();
+}
+</script>
+
 </body>
 </html>
