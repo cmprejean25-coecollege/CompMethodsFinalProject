@@ -242,7 +242,7 @@ All red buffer
 Repeat
 if (timer > GREEN_TIME)
 Switch phase after time ends.
-🛣️ 12. DRAW ENVIRONMENT (ROAD)
+# 12. DRAW ENVIRONMENT (ROAD)
 ctx.fillRect(...)
 
 Draws roads (horizontal + vertical).
