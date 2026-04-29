@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Traffic Simulation - Fixed</title>
+<title>Traffic Simulation - 300 Cars</title>
 
 <style>
   body {
@@ -43,8 +43,6 @@
     font-size: 18px;
     margin-top: 10px;
     cursor: pointer;
-    border: none;
-    border-radius: 5px;
   }
 </style>
 </head>
@@ -54,7 +52,7 @@
 <canvas id="simCanvas" width="800" height="600"></canvas>
 
 <div id="uiOverlay">
-  <h1>🚦 Traffic Simulation</h1>
+  <h1>🚦 Traffic Simulation (300 Cars)</h1>
   <button id="startBtn">▶ Start</button>
 </div>
 
@@ -76,30 +74,30 @@ const roadWidth = 120;
 let running = false;
 
 // ---------------- LIGHT SYSTEM ----------------
-let lightState = "NS"; // NS = North/South Green, EW = East/West Green
+let lightState = "NS"; 
 let timer = 0;
-const GREEN_TIME = 200;
-const ALL_RED_TIME = 100;
+const GREEN_TIME = 250;
+const ALL_RED_TIME = 80;
 
 // ---------------- CAR CLASS ----------------
 class Car {
-  constructor(x, y, dx, dy, color) {
+  constructor(x, y, dx, dy) {
     this.x = x;
     this.y = y;
     this.dx = dx;
     this.dy = dy;
-    this.speed = 2;
-    this.width = 30;
-    this.height = 18;
-    this.color = color || "#3498db";
+    this.speed = 1.8;
+    this.width = 22; // Original dimensions
+    this.height = 12;
     this.crossedIntersection = false;
   }
 
   getBounds() {
-    // If vertical, swap width/height for hitboxes
-    const w = this.dx !== 0 ? this.width : this.height;
-    const h = this.dx !== 0 ? this.height : this.width;
-    return { x: this.x, y: this.y, w, h };
+    // For collision, we need to account for rotation
+    if (this.dy !== 0) {
+        return { x: this.x - this.height/2, y: this.y - this.width/2, w: this.height, h: this.width };
+    }
+    return { x: this.x - this.width/2, y: this.y - this.height/2, w: this.width, h: this.height };
   }
 
   update(frontCar) {
@@ -108,121 +106,113 @@ class Car {
     const cy = canvas.height / 2;
 
     const stopLines = {
-      N: cy - roadWidth / 2 - 10,
-      S: cy + roadWidth / 2 + 10,
-      W: cx - roadWidth / 2 - 10,
-      E: cx + roadWidth / 2 + 10
+      N: cy - roadWidth / 2,
+      S: cy + roadWidth / 2,
+      W: cx - roadWidth / 2,
+      E: cx + roadWidth / 2
     };
 
-    // 1. Check Front Car (Proximity)
+    // 1. Check Front Car
     if (frontCar) {
       let dist = Infinity;
-      if (this.dx > 0) dist = frontCar.x - (this.x + this.width);
-      if (this.dx < 0) dist = this.x - (frontCar.x + frontCar.width);
-      if (this.dy > 0) dist = frontCar.y - (this.y + this.width); // width used as length when vertical
-      if (this.dy < 0) dist = this.y - (frontCar.y + frontCar.width);
+      if (this.dx > 0) dist = frontCar.x - this.x;
+      else if (this.dx < 0) dist = this.x - frontCar.x;
+      else if (this.dy > 0) dist = frontCar.y - this.y;
+      else if (this.dy < 0) dist = this.y - frontCar.y;
 
-      if (dist < 15) canMove = false;
+      if (dist < 32) canMove = false; 
     }
 
     // 2. Traffic Light Logic
     if (!this.crossedIntersection) {
-      if (this.dy !== 0) { // North/South
+      const lookAhead = 30;
+      if (this.dy !== 0) {
         const isGreen = (lightState === "NS");
-        if (!isGreen) {
-          if (this.dy > 0 && this.y + this.width > stopLines.N - 10 && this.y < stopLines.N) canMove = false;
-          if (this.dy < 0 && this.y < stopLines.S + 10 && this.y + this.width > stopLines.S) canMove = false;
-        }
-      } else { // East/West
+        const stopLine = (this.dy > 0) ? stopLines.N : stopLines.S;
+        const willCross = (this.dy > 0) ? (this.y + lookAhead > stopLine && this.y < stopLine) : (this.y - lookAhead < stopLine && this.y > stopLine);
+        if (willCross && !isGreen) canMove = false;
+      } else {
         const isGreen = (lightState === "EW");
-        if (!isGreen) {
-          if (this.dx > 0 && this.x + this.width > stopLines.W - 10 && this.x < stopLines.W) canMove = false;
-          if (this.dx < 0 && this.x < stopLines.E + 10 && this.x + this.width > stopLines.E) canMove = false;
-        }
+        const stopLine = (this.dx > 0) ? stopLines.W : stopLines.E;
+        const willCross = (this.dx > 0) ? (this.x + lookAhead > stopLine && this.x < stopLine) : (this.x - lookAhead < stopLine && this.x > stopLine);
+        if (willCross && !isGreen) canMove = false;
       }
     }
 
-    // 3. Move and Update Crossing State
     if (canMove) {
       this.x += this.dx * this.speed;
       this.y += this.dy * this.speed;
 
-      if (this.dx > 0 && this.x > cx + roadWidth/2) this.crossedIntersection = true;
-      if (this.dx < 0 && this.x < cx - roadWidth/2) this.crossedIntersection = true;
-      if (this.dy > 0 && this.y > cy + roadWidth/2) this.crossedIntersection = true;
-      if (this.dy < 0 && this.y < cy - roadWidth/2) this.crossedIntersection = true;
+      // Mark as crossed once past the middle of the intersection
+      if (Math.abs(this.x - cx) < 10 && Math.abs(this.y - cy) < 10) {
+          this.crossedIntersection = true;
+      }
     }
   }
 
   draw() {
     ctx.save();
     ctx.translate(this.x, this.y);
-    if (this.dy !== 0) {
-        ctx.translate(this.height/2, this.width/2);
-        ctx.rotate(this.dy > 0 ? Math.PI/2 : -Math.PI/2);
-        ctx.fillStyle = this.color;
-        ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
-    } else {
-        ctx.translate(this.width/2, this.height/2);
-        if (this.dx < 0) ctx.rotate(Math.PI);
-        ctx.fillStyle = this.color;
-        ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
-    }
+
+    // Original rotation logic
+    if (this.dx > 0) ctx.rotate(0);
+    else if (this.dx < 0) ctx.rotate(Math.PI);
+    else if (this.dy > 0) ctx.rotate(Math.PI/2);
+    else ctx.rotate(-Math.PI/2);
+
+    ctx.fillStyle = "#3498db";
+    // Centering the rectangle for proper rotation
+    ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+    
+    // Tiny "headlights" to help tell direction
+    ctx.fillStyle = "white";
+    ctx.fillRect(this.width/2 - 4, -this.height/2, 4, 2);
+    ctx.fillRect(this.width/2 - 4, this.height/2 - 2, 4, 2);
+
     ctx.restore();
   }
 }
 
-// ---------------- GAME LOGIC ----------------
+// ---------------- GAME ENGINE ----------------
 let cars = [];
 
 function createCars() {
-  const spacing = 100;
-  for (let i = 0; i < 10; i++) {
-    // West to East
-    cars.push(new Car(-i * spacing, canvas.height/2 + 10, 1, 0, "#3498db"));
-    // East to West
-    cars.push(new Car(canvas.width + i * spacing, canvas.height/2 - 30, -1, 0, "#f1c40f"));
-    // North to South
-    cars.push(new Car(canvas.width/2 - 30, -i * spacing, 0, 1, "#e67e22"));
-    // South to North
-    cars.push(new Car(canvas.width/2 + 10, canvas.height + i * spacing, 0, -1, "#9b59b6"));
+  const perLane = 75; // 75 * 4 lanes = 300 cars
+  const spacing = 40;
+
+  for (let i = 0; i < perLane; i++) {
+    // Westbound (East to West)
+    cars.push(new Car(canvas.width + (i * spacing), canvas.height/2 - 25, -1, 0));
+    // Eastbound (West to East)
+    cars.push(new Car(-(i * spacing), canvas.height/2 + 25, 1, 0));
+    // Southbound (North to South)
+    cars.push(new Car(canvas.width/2 - 25, -(i * spacing), 0, 1));
+    // Northbound (South to North)
+    cars.push(new Car(canvas.width/2 + 25, canvas.height + (i * spacing), 0, -1));
   }
 }
 
 function updateLights() {
   timer++;
-  if (timer > (lightState === "ALL_RED" ? ALL_RED_TIME : GREEN_TIME)) {
+  if (timer > GREEN_TIME) {
+    lightState = (lightState === "NS") ? "EW" : "NS";
     timer = 0;
-    if (lightState === "NS") lightState = "ALL_RED_EW";
-    else if (lightState === "ALL_RED_EW") lightState = "EW";
-    else if (lightState === "EW") lightState = "ALL_RED_NS";
-    else lightState = "NS";
   }
 }
 
-function drawEnvironment() {
-  // Roads
+function drawRoads() {
   ctx.fillStyle = "#555";
   ctx.fillRect(0, canvas.height/2 - roadWidth/2, canvas.width, roadWidth);
   ctx.fillRect(canvas.width/2 - roadWidth/2, 0, roadWidth, canvas.height);
-
-  // Markings
-  ctx.strokeStyle = "white";
-  ctx.setLineDash([20, 20]);
+  
+  // Center Lines
+  ctx.strokeStyle = "#f1c40f";
+  ctx.setLineDash([10, 10]);
   ctx.beginPath();
   ctx.moveTo(0, canvas.height/2); ctx.lineTo(canvas.width, canvas.height/2);
   ctx.moveTo(canvas.width/2, 0); ctx.lineTo(canvas.width/2, canvas.height);
   ctx.stroke();
   ctx.setLineDash([]);
-
-  // Simple Light Indicators
-  ctx.fillStyle = (lightState === "NS") ? "#2ecc71" : "#e74c3c";
-  ctx.fillRect(canvas.width/2 - 80, canvas.height/2 - 80, 10, 10); // NW light
-  ctx.fillRect(canvas.width/2 + 70, canvas.height/2 + 70, 10, 10); // SE light
-
-  ctx.fillStyle = (lightState === "EW") ? "#2ecc71" : "#e74c3c";
-  ctx.fillRect(canvas.width/2 + 70, canvas.height/2 - 80, 10, 10); // NE light
-  ctx.fillRect(canvas.width/2 - 80, canvas.height/2 + 70, 10, 10); // SW light
 }
 
 function checkCollision(a, b) {
@@ -235,44 +225,54 @@ function animate() {
   if (!running) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  drawEnvironment();
+  drawRoads();
   updateLights();
 
-  for (let car of cars) {
+  // Optimized Loop: Only check collisions for cars actually on screen
+  for (let i = 0; i < cars.length; i++) {
+    let car = cars[i];
+    
+    // Optimization: Skip cars far off screen
+    if (car.x < -100 || car.x > canvas.width + 100 || car.y < -100 || car.y > canvas.height + 100) {
+        // Just move them, don't check logic
+        car.x += car.dx * car.speed;
+        car.y += car.dy * car.speed;
+        continue;
+    }
+
     let frontCar = null;
-    let minDist = 150;
+    let minDist = Infinity;
 
     for (let other of cars) {
       if (other === car) continue;
-      // Check if in same lane and ahead
-      let isSameLane = (car.dx !== 0 && car.dx === other.dx && Math.abs(car.y - other.y) < 5) ||
-                       (car.dy !== 0 && car.dy === other.dy && Math.abs(car.x - other.x) < 5);
-      
-      if (isSameLane) {
-        let d = Infinity;
-        if (car.dx > 0 && other.x > car.x) d = other.x - car.x;
-        if (car.dx < 0 && other.x < car.x) d = car.x - other.x;
-        if (car.dy > 0 && other.y > car.y) d = other.y - car.y;
-        if (car.dy < 0 && other.y < car.y) d = car.y - other.y;
-        
-        if (d < minDist) {
-          minDist = d;
-          frontCar = other;
-        }
+      // Must be same direction and same lane
+      if (car.dx === other.dx && car.dy === other.dy) {
+          let d = Infinity;
+          if (car.dx > 0 && other.x > car.x) d = other.x - car.x;
+          else if (car.dx < 0 && other.x < car.x) d = car.x - other.x;
+          else if (car.dy > 0 && other.y > car.y) d = other.y - car.y;
+          else if (car.dy < 0 && other.y < car.y) d = car.y - other.y;
+
+          if (d < minDist) {
+              minDist = d;
+              frontCar = other;
+          }
       }
     }
 
     car.update(frontCar);
     car.draw();
-  }
 
-  // Collision detection
-  for (let i = 0; i < cars.length; i++) {
+    // Check collisions with all other cars (only if on screen)
     for (let j = i + 1; j < cars.length; j++) {
-      if (checkCollision(cars[i], cars[j])) {
-        running = false;
-        crashOverlay.style.display = "flex";
-      }
+        let other = cars[j];
+        if (Math.abs(car.x - other.x) < 30 && Math.abs(car.y - other.y) < 30) {
+            if (checkCollision(car, other)) {
+                running = false;
+                crashOverlay.style.display = "flex";
+                return;
+            }
+        }
     }
   }
 
@@ -293,5 +293,6 @@ function reset() {
 startBtn.addEventListener("click", reset);
 restartBtn.addEventListener("click", reset);
 </script>
+
 </body>
 </html>
