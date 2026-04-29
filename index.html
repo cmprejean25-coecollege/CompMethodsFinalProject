@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Traffic Simulation - 300 Cars</title>
+<title>Traffic Simulation - 300 Cars Fixed</title>
 
 <style>
   body {
@@ -77,7 +77,6 @@ let running = false;
 let lightState = "NS"; 
 let timer = 0;
 const GREEN_TIME = 250;
-const ALL_RED_TIME = 80;
 
 // ---------------- CAR CLASS ----------------
 class Car {
@@ -87,13 +86,13 @@ class Car {
     this.dx = dx;
     this.dy = dy;
     this.speed = 1.8;
-    this.width = 22; // Original dimensions
+    this.width = 22; 
     this.height = 12;
     this.crossedIntersection = false;
   }
 
   getBounds() {
-    // For collision, we need to account for rotation
+    // Correct hitboxes for horizontal vs vertical
     if (this.dy !== 0) {
         return { x: this.x - this.height/2, y: this.y - this.width/2, w: this.height, h: this.width };
     }
@@ -106,13 +105,13 @@ class Car {
     const cy = canvas.height / 2;
 
     const stopLines = {
-      N: cy - roadWidth / 2,
-      S: cy + roadWidth / 2,
-      W: cx - roadWidth / 2,
-      E: cx + roadWidth / 2
+      N: cy - roadWidth / 2 - 5,
+      S: cy + roadWidth / 2 + 5,
+      W: cx - roadWidth / 2 - 5,
+      E: cx + roadWidth / 2 + 5
     };
 
-    // 1. Check Front Car
+    // 1. Check Front Car (keep distance)
     if (frontCar) {
       let dist = Infinity;
       if (this.dx > 0) dist = frontCar.x - this.x;
@@ -120,12 +119,12 @@ class Car {
       else if (this.dy > 0) dist = frontCar.y - this.y;
       else if (this.dy < 0) dist = this.y - frontCar.y;
 
-      if (dist < 32) canMove = false; 
+      if (dist < 35) canMove = false; 
     }
 
     // 2. Traffic Light Logic
     if (!this.crossedIntersection) {
-      const lookAhead = 30;
+      const lookAhead = 25;
       if (this.dy !== 0) {
         const isGreen = (lightState === "NS");
         const stopLine = (this.dy > 0) ? stopLines.N : stopLines.S;
@@ -143,10 +142,11 @@ class Car {
       this.x += this.dx * this.speed;
       this.y += this.dy * this.speed;
 
-      // Mark as crossed once past the middle of the intersection
-      if (Math.abs(this.x - cx) < 10 && Math.abs(this.y - cy) < 10) {
-          this.crossedIntersection = true;
-      }
+      // Mark crossed once center is past the intersection exit
+      if (this.dx > 0 && this.x > cx + roadWidth/2) this.crossedIntersection = true;
+      if (this.dx < 0 && this.x < cx - roadWidth/2) this.crossedIntersection = true;
+      if (this.dy > 0 && this.y > cy + roadWidth/2) this.crossedIntersection = true;
+      if (this.dy < 0 && this.y < cy - roadWidth/2) this.crossedIntersection = true;
     }
   }
 
@@ -154,17 +154,15 @@ class Car {
     ctx.save();
     ctx.translate(this.x, this.y);
 
-    // Original rotation logic
     if (this.dx > 0) ctx.rotate(0);
     else if (this.dx < 0) ctx.rotate(Math.PI);
     else if (this.dy > 0) ctx.rotate(Math.PI/2);
     else ctx.rotate(-Math.PI/2);
 
     ctx.fillStyle = "#3498db";
-    // Centering the rectangle for proper rotation
     ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
     
-    // Tiny "headlights" to help tell direction
+    // Headlights
     ctx.fillStyle = "white";
     ctx.fillRect(this.width/2 - 4, -this.height/2, 4, 2);
     ctx.fillRect(this.width/2 - 4, this.height/2 - 2, 4, 2);
@@ -173,34 +171,27 @@ class Car {
   }
 }
 
-// ---------------- GAME ENGINE ----------------
+// ---------------- ENGINE ----------------
 let cars = [];
 
 function createCars() {
-  const perLane = 75; // 75 * 4 lanes = 300 cars
-  const spacing = 40;
+  const perLane = 75; 
+  const spacing = 45; // Increased spacing to prevent offscreen clusters
 
   for (let i = 0; i < perLane; i++) {
-    // Westbound (East to West)
-    cars.push(new Car(canvas.width + (i * spacing), canvas.height/2 - 25, -1, 0));
-    // Eastbound (West to East)
-    cars.push(new Car(-(i * spacing), canvas.height/2 + 25, 1, 0));
-    // Southbound (North to South)
-    cars.push(new Car(canvas.width/2 - 25, -(i * spacing), 0, 1));
-    // Northbound (South to North)
-    cars.push(new Car(canvas.width/2 + 25, canvas.height + (i * spacing), 0, -1));
+    // Westbound (East to West) - Top lane of horizontal road
+    cars.push(new Car(canvas.width + 50 + (i * spacing), canvas.height/2 - 25, -1, 0));
+    // Eastbound (West to East) - Bottom lane of horizontal road
+    cars.push(new Car(-(50 + i * spacing), canvas.height/2 + 25, 1, 0));
+    // Southbound (North to South) - Left lane of vertical road
+    cars.push(new Car(canvas.width/2 - 25, -(50 + i * spacing), 0, 1));
+    // Northbound (South to North) - Right lane of vertical road
+    cars.push(new Car(canvas.width/2 + 25, canvas.height + 50 + (i * spacing), 0, -1));
   }
 }
 
-function updateLights() {
-  timer++;
-  if (timer > GREEN_TIME) {
-    lightState = (lightState === "NS") ? "EW" : "NS";
-    timer = 0;
-  }
-}
-
-function drawRoads() {
+function drawEnvironment() {
+  // Asphalt
   ctx.fillStyle = "#555";
   ctx.fillRect(0, canvas.height/2 - roadWidth/2, canvas.width, roadWidth);
   ctx.fillRect(canvas.width/2 - roadWidth/2, 0, roadWidth, canvas.height);
@@ -213,6 +204,25 @@ function drawRoads() {
   ctx.moveTo(canvas.width/2, 0); ctx.lineTo(canvas.width/2, canvas.height);
   ctx.stroke();
   ctx.setLineDash([]);
+
+  // --- TRAFFIC LIGHTS ---
+  const cx = canvas.width/2;
+  const cy = canvas.height/2;
+  const offset = roadWidth/2 + 15;
+
+  // NS Lights
+  ctx.fillStyle = (lightState === "NS") ? "#2ecc71" : "#e74c3c";
+  ctx.beginPath();
+  ctx.arc(cx - offset, cy - offset, 8, 0, Math.PI*2); // Top Left
+  ctx.arc(cx + offset, cy + offset, 8, 0, Math.PI*2); // Bottom Right
+  ctx.fill();
+
+  // EW Lights
+  ctx.fillStyle = (lightState === "EW") ? "#2ecc71" : "#e74c3c";
+  ctx.beginPath();
+  ctx.arc(cx + offset, cy - offset, 8, 0, Math.PI*2); // Top Right
+  ctx.arc(cx - offset, cy + offset, 8, 0, Math.PI*2); // Bottom Left
+  ctx.fill();
 }
 
 function checkCollision(a, b) {
@@ -225,57 +235,50 @@ function animate() {
   if (!running) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  drawRoads();
-  updateLights();
+  drawEnvironment();
+  
+  timer++;
+  if (timer > GREEN_TIME) {
+    lightState = (lightState === "NS") ? "EW" : "NS";
+    timer = 0;
+  }
 
-  // Optimized Loop: Only check collisions for cars actually on screen
   for (let i = 0; i < cars.length; i++) {
     let car = cars[i];
     
-    // Optimization: Skip cars far off screen
-    if (car.x < -100 || car.x > canvas.width + 100 || car.y < -100 || car.y > canvas.height + 100) {
-        // Just move them, don't check logic
-        car.x += car.dx * car.speed;
-        car.y += car.dy * car.speed;
-        continue;
-    }
-
+    // Logic for following distance
     let frontCar = null;
     let minDist = Infinity;
-
     for (let other of cars) {
       if (other === car) continue;
-      // Must be same direction and same lane
       if (car.dx === other.dx && car.dy === other.dy) {
           let d = Infinity;
           if (car.dx > 0 && other.x > car.x) d = other.x - car.x;
           else if (car.dx < 0 && other.x < car.x) d = car.x - other.x;
           else if (car.dy > 0 && other.y > car.y) d = other.y - car.y;
           else if (car.dy < 0 && other.y < car.y) d = car.y - other.y;
-
-          if (d < minDist) {
-              minDist = d;
-              frontCar = other;
-          }
+          if (d < minDist) { minDist = d; frontCar = other; }
       }
     }
 
     car.update(frontCar);
     car.draw();
 
-    // Check collisions with all other cars (only if on screen)
-    for (let j = i + 1; j < cars.length; j++) {
-        let other = cars[j];
-        if (Math.abs(car.x - other.x) < 30 && Math.abs(car.y - other.y) < 30) {
-            if (checkCollision(car, other)) {
-                running = false;
-                crashOverlay.style.display = "flex";
-                return;
+    // COLLISION CHECK: Only check if car is on screen to prevent offscreen ghost crashes
+    if (car.x > 0 && car.x < canvas.width && car.y > 0 && car.y < canvas.height) {
+        for (let j = i + 1; j < cars.length; j++) {
+            let other = cars[j];
+            // Only check nearby cars for performance
+            if (Math.abs(car.x - other.x) < 30 && Math.abs(car.y - other.y) < 30) {
+                if (checkCollision(car, other)) {
+                    running = false;
+                    crashOverlay.style.display = "flex";
+                    return;
+                }
             }
         }
     }
   }
-
   requestAnimationFrame(animate);
 }
 
