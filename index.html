@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Traffic Simulation (Fixed Lane-Light + Stop Logic)</title>
+<title>Traffic Simulation (Improved Lights)</title>
 
 <style>
   body {
@@ -34,7 +34,7 @@
 
 <body>
 
-<h1>🚦 Fixed Intersection (Stable Stop + Light Sync)</h1>
+<h1>🚦 Fixed Intersection (Realistic Lights)</h1>
 <button onclick="start()">Start Simulation</button>
 <div id="status"></div>
 
@@ -49,8 +49,6 @@ let cars = [];
 let running = false;
 
 // 🚦 2-phase system
-// 0 = North/South green
-// 1 = East/West green
 let phase = 0;
 
 // 🚗 lane configuration
@@ -95,7 +93,7 @@ function drawRoad() {
   ctx.beginPath(); ctx.moveTo(220, 250); ctx.lineTo(220, 350); ctx.stroke();
 }
 
-// 🚦 lights
+// 🚦 UPDATED LIGHTS (realistic housing on stop lines)
 function drawLights() {
   for (let i = 0; i < 4; i++) {
 
@@ -104,12 +102,26 @@ function drawLights() {
     if (phase === 0 && (i === 0 || i === 2)) green = true;
     if (phase === 1 && (i === 1 || i === 3)) green = true;
 
-    ctx.fillStyle = green ? "lime" : "red";
+    let x = 0, y = 0;
 
-    if (i === 0) ctx.fillRect(275, 200, 10, 10);
-    if (i === 1) ctx.fillRect(380, 275, 10, 10);
-    if (i === 2) ctx.fillRect(275, 380, 10, 10);
-    if (i === 3) ctx.fillRect(200, 275, 10, 10);
+    if (i === 0) { x = 290; y = 220; } // north
+    if (i === 1) { x = 360; y = 290; } // east
+    if (i === 2) { x = 310; y = 360; } // south
+    if (i === 3) { x = 220; y = 310; } // west
+
+    // 🟧 housing
+    ctx.fillStyle = "#cc7a00";
+    ctx.fillRect(x - 8, y - 8, 20, 20);
+
+    // ⚫ backing
+    ctx.fillStyle = "#222";
+    ctx.fillRect(x - 5, y - 5, 14, 14);
+
+    // 🔴🟢 light
+    ctx.fillStyle = green ? "lime" : "red";
+    ctx.beginPath();
+    ctx.arc(x + 2, y + 2, 4, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
@@ -146,18 +158,16 @@ function isTooClose(car) {
   return false;
 }
 
-// 🚦 UPDATED CORE LOGIC (FIXED FREEZING + STOP ERRORS)
+// 🚦 logic
 function updateCar(c) {
 
   const lane = lanes[c.dir];
   const BUFFER = 6;
 
-  // 🚦 correct green logic
   const green =
     (phase === 0 && (c.dir === 0 || c.dir === 2)) ||
     (phase === 1 && (c.dir === 1 || c.dir === 3));
 
-  // 🧠 stop-line detection (restricted to approach zone)
   let atStopLine = false;
 
   if (lane.axis === "y") {
@@ -170,25 +180,21 @@ function updateCar(c) {
     if (lane.dir === 1 && c.x >= lane.stop - BUFFER && c.x < 360) atStopLine = true;
   }
 
-  // 🚦 STOP only if needed
   if (atStopLine && !green) {
     c.speed = 0;
     return;
   }
 
-  // 🚗 spacing rule still applies
   if (isTooClose(c)) {
     c.speed = 0;
     return;
   }
 
-  // 🚗 IMPORTANT FIX:
-  // always restore speed when allowed to move (prevents freezing bug)
   c.speed = 1.6;
   moveCar(c);
 }
 
-// 💥 collision detection
+// 💥 collision
 function checkCollision() {
   for (let i = 0; i < cars.length; i++) {
     for (let j = i + 1; j < cars.length; j++) {
@@ -271,7 +277,7 @@ function start() {
   cars = [];
   running = true;
   phase = 0;
-  statusDiv.textContent = "Running (Fixed Stop + Light Sync)";
+  statusDiv.textContent = "Running (Realistic Lights)";
   loop();
 }
 </script>
