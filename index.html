@@ -58,14 +58,14 @@
 <canvas id="simCanvas" width="800" height="600"></canvas>
 
 <div id="uiOverlay">
-  <h1>🚦 Traffic Simulation</h1>
+  <h1>Traffic Simulation</h1>
   <p>300 Cars | Intersection Buffer Logic</p>
   <button id="startBtn">▶ Start Simulation</button>
 </div>
 
 <div id="crashOverlay">
-  🚨 COLLISION DETECTED 🚨
-  <button id="restartBtn">🔁 Restart</button>
+   COLLISION DETECTED
+  <button id="restartBtn"> Restart</button>
 </div>
 
 <script>
@@ -77,14 +77,14 @@ const crashOverlay = document.getElementById("crashOverlay");
 const startBtn = document.getElementById("startBtn");
 const restartBtn = document.getElementById("restartBtn");
 
-const roadWidth = 120;
+const roadWidth = 120; //Can be modified to change roadWidth
 let running = false;
 
 // ---------------- LIGHT SYSTEM ----------------
 let lightState = "NS"; 
 let timer = 0;
 const GREEN_TIME = 250;
-const BUFFER_TIME = 100; // Time when all lights are red to clear intersection
+const BUFFER_TIME = 100; // Time when all lights are red to clear intersection, can be adjusted
 let nextPhase = "EW";
 
 // ---------------- CAR CLASS ----------------
@@ -94,9 +94,9 @@ class Car {
     this.y = y;
     this.dx = dx;
     this.dy = dy;
-    this.speed = 1.8;
-    this.width = 22; 
-    this.height = 12;
+    this.speed = 1.8; //can modify to change speed
+    this.width = 22; //can modify to change hitbox
+    this.height = 12; //can modify to change hitbox
     this.crossedIntersection = false;
   }
 
@@ -184,7 +184,7 @@ class Car {
 let cars = [];
 
 function createCars() {
-  const perLane = 75; // Total 300 cars
+  const perLane = 75; // Total 300 cars, can also be modified
   const spacing = 50; 
 
   for (let i = 0; i < perLane; i++) {
