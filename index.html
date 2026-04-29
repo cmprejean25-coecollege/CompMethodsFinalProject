@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>4-Way Traffic Simulation </title> 
+<title>Traffic Simulation (Fixed Lane-Light + Stop Logic)</title>
 
 <style>
   body {
@@ -34,7 +34,7 @@
 
 <body>
 
-<h1>🚦 4-Way Intersection Simulation</h1>
+<h1>🚦 Fixed Intersection (Stable Stop + Light Sync)</h1>
 <button onclick="start()">Start Simulation</button>
 <div id="status"></div>
 
@@ -47,19 +47,29 @@ const statusDiv = document.getElementById("status");
 
 let cars = [];
 let running = false;
-let green = 0;
-let crashed = false;
 
-// 🚗 spawn car
+// 🚦 2-phase system
+// 0 = North/South green
+// 1 = East/West green
+let phase = 0;
+
+// 🚗 lane configuration
+const lanes = {
+  0: { axis: "y", stop: 220, dir: -1 }, // north
+  1: { axis: "x", stop: 360, dir: 1 },  // east
+  2: { axis: "y", stop: 360, dir: 1 },  // south
+  3: { axis: "x", stop: 220, dir: -1 }  // west
+};
+
+// 🚗 spawn
 function spawnCar() {
   const dir = Math.floor(Math.random() * 4);
 
   let car = {
     dir,
-    speed: 1.6
+    speed: 1.6,
     x: 0,
-    y: 0,
-    entered: false
+    y: 0
   };
 
   if (dir === 0) { car.x = 290; car.y = 650; }
@@ -75,12 +85,26 @@ function drawRoad() {
   ctx.fillStyle = "#555";
   ctx.fillRect(250, 0, 100, 600);
   ctx.fillRect(0, 250, 600, 100);
+
+  ctx.strokeStyle = "white";
+  ctx.lineWidth = 2;
+
+  ctx.beginPath(); ctx.moveTo(250, 220); ctx.lineTo(350, 220); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(360, 250); ctx.lineTo(360, 350); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(250, 360); ctx.lineTo(350, 360); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(220, 250); ctx.lineTo(220, 350); ctx.stroke();
 }
 
 // 🚦 lights
 function drawLights() {
   for (let i = 0; i < 4; i++) {
-    ctx.fillStyle = (i === green) ? "lime" : "red";
+
+    let green = false;
+
+    if (phase === 0 && (i === 0 || i === 2)) green = true;
+    if (phase === 1 && (i === 1 || i === 3)) green = true;
+
+    ctx.fillStyle = green ? "lime" : "red";
 
     if (i === 0) ctx.fillRect(275, 200, 10, 10);
     if (i === 1) ctx.fillRect(380, 275, 10, 10);
@@ -89,16 +113,23 @@ function drawLights() {
   }
 }
 
-// 🚧 stop line
-function atStopLine(c) {
-  if (c.dir === 0 && c.y <= 330) return true;
-  if (c.dir === 2 && c.y >= 270) return true;
-  if (c.dir === 1 && c.x >= 270) return true;
-  if (c.dir === 3 && c.x <= 330) return true;
-  return false;
+// 🚗 movement
+function moveCar(c) {
+  if (c.dir === 0) c.y -= c.speed;
+  if (c.dir === 1) c.x += c.speed;
+  if (c.dir === 2) c.y += c.speed;
+  if (c.dir === 3) c.x -= c.speed;
 }
 
-// 🚗 SAFE FOLLOWING DISTANCE (NEW CORE FIX)
+// 🧠 intersection check
+function inIntersection(c) {
+  return (
+    c.x > 250 && c.x < 350 &&
+    c.y > 250 && c.y < 350
+  );
+}
+
+// 🚗 spacing
 function isTooClose(car) {
   const SAFE_DISTANCE = 18;
 
@@ -106,7 +137,6 @@ function isTooClose(car) {
     if (other === car) continue;
     if (other.dir !== car.dir) continue;
 
-    // same lane ahead checks
     if (car.dir === 0 && other.y < car.y && car.y - other.y < SAFE_DISTANCE) return true;
     if (car.dir === 2 && other.y > car.y && other.y - car.y < SAFE_DISTANCE) return true;
     if (car.dir === 1 && other.x > car.x && other.x - car.x < SAFE_DISTANCE) return true;
@@ -116,48 +146,69 @@ function isTooClose(car) {
   return false;
 }
 
-// 💥 collision detection (still safety fallback)
+// 🚦 UPDATED CORE LOGIC (FIXED FREEZING + STOP ERRORS)
+function updateCar(c) {
+
+  const lane = lanes[c.dir];
+  const BUFFER = 6;
+
+  // 🚦 correct green logic
+  const green =
+    (phase === 0 && (c.dir === 0 || c.dir === 2)) ||
+    (phase === 1 && (c.dir === 1 || c.dir === 3));
+
+  // 🧠 stop-line detection (restricted to approach zone)
+  let atStopLine = false;
+
+  if (lane.axis === "y") {
+    if (lane.dir === -1 && c.y <= lane.stop + BUFFER && c.y > 240) atStopLine = true;
+    if (lane.dir === 1 && c.y >= lane.stop - BUFFER && c.y < 360) atStopLine = true;
+  }
+
+  if (lane.axis === "x") {
+    if (lane.dir === -1 && c.x <= lane.stop + BUFFER && c.x > 240) atStopLine = true;
+    if (lane.dir === 1 && c.x >= lane.stop - BUFFER && c.x < 360) atStopLine = true;
+  }
+
+  // 🚦 STOP only if needed
+  if (atStopLine && !green) {
+    c.speed = 0;
+    return;
+  }
+
+  // 🚗 spacing rule still applies
+  if (isTooClose(c)) {
+    c.speed = 0;
+    return;
+  }
+
+  // 🚗 IMPORTANT FIX:
+  // always restore speed when allowed to move (prevents freezing bug)
+  c.speed = 1.6;
+  moveCar(c);
+}
+
+// 💥 collision detection
 function checkCollision() {
   for (let i = 0; i < cars.length; i++) {
     for (let j = i + 1; j < cars.length; j++) {
+
       const a = cars[i];
       const b = cars[j];
 
       const dx = a.x - b.x;
       const dy = a.y - b.y;
 
-      if (Math.sqrt(dx * dx + dy * dy) < 10) {
-        crashed = true;
+      if (dx * dx + dy * dy < 100) {
         running = false;
-        statusDiv.textContent = "💥 COLLISION DETECTED — SIMULATION FAILED";
+        statusDiv.textContent = "💥 COLLISION DETECTED";
         return;
       }
     }
   }
 }
 
-// 🚗 update cars (UPDATED LOGIC)
-function updateCar(c) {
-  const canGo = c.dir === green;
-
-  if (!c.entered && !atStopLine(c)) {
-    c.entered = true;
-  }
-
-  // 🚦 red light only before entering intersection
-  if (!canGo && !c.entered && atStopLine(c)) return;
-
-  // 🚗 prevent rear-ending (NEW)
-  if (isTooClose(c)) return;
-
-  // movement
-  if (c.dir === 0) c.y -= c.speed;
-  if (c.dir === 1) c.x += c.speed;
-  if (c.dir === 2) c.y += c.speed;
-  if (c.dir === 3) c.x -= c.speed;
-}
-
-// 🚗 draw cars (with headlights)
+// 🚗 draw cars
 function drawCars() {
   cars.forEach(c => {
     ctx.fillStyle = "#00aaff";
@@ -166,23 +217,20 @@ function drawCars() {
     ctx.fillStyle = "yellow";
 
     if (c.dir === 0) {
-      ctx.fillRect(c.x + 3, c.y - 2, 2, 2);
-      ctx.fillRect(c.x + 7, c.y - 2, 2, 2);
+      ctx.fillRect(c.x + 3, c.y - 2, 3, 2);
+      ctx.fillRect(c.x + 7, c.y - 2, 3, 2);
     }
-
     if (c.dir === 1) {
-      ctx.fillRect(c.x + 12, c.y + 3, 2, 2);
-      ctx.fillRect(c.x + 12, c.y + 7, 2, 2);
+      ctx.fillRect(c.x + 12, c.y + 3, 2, 3);
+      ctx.fillRect(c.x + 12, c.y + 7, 2, 3);
     }
-
     if (c.dir === 2) {
-      ctx.fillRect(c.x + 3, c.y + 12, 2, 2);
-      ctx.fillRect(c.x + 7, c.y + 12, 2, 2);
+      ctx.fillRect(c.x + 3, c.y + 12, 3, 2);
+      ctx.fillRect(c.x + 7, c.y + 12, 3, 2);
     }
-
     if (c.dir === 3) {
-      ctx.fillRect(c.x - 2, c.y + 3, 2, 2);
-      ctx.fillRect(c.x - 2, c.y + 7, 2, 2);
+      ctx.fillRect(c.x - 2, c.y + 3, 2, 3);
+      ctx.fillRect(c.x - 2, c.y + 7, 2, 3);
     }
   });
 }
@@ -208,22 +256,22 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
-// 🚦 traffic switch
+// 🚦 phase switching
 setInterval(() => {
-  if (running) green = (green + 1) % 4;
-}, 2000);
+  if (running) phase = (phase + 1) % 2;
+}, 3000);
 
-// 🚗 spawn cars
+// 🚗 spawn
 setInterval(() => {
-  if (running && !crashed) spawnCar();
-}, 500);
+  if (running) spawnCar();
+}, 600);
 
 // ▶ start
 function start() {
   cars = [];
-  crashed = false;
   running = true;
-  statusDiv.textContent = "";
+  phase = 0;
+  statusDiv.textContent = "Running (Fixed Stop + Light Sync)";
   loop();
 }
 </script>
