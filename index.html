@@ -1,199 +1,147 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Cloverleaf Interchange Simulation</title>
+<title>Cloverleaf Interchange - Final Working Version</title>
 <style>
-  body { margin: 0; background: #2c3e50; overflow: hidden; font-family: sans-serif; }
-  canvas { display: block; margin: auto; background: #27ae60; }
-  #ui { position: absolute; top: 20px; left: 20px; color: white; pointer-events: none; }
-  .controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); }
-  button { padding: 10px 20px; cursor: pointer; border-radius: 5px; border: none; background: #ecf0f1; }
+  body { margin: 0; background: #1a1a1a; overflow: hidden; font-family: sans-serif; }
+  canvas { display: block; background: #27ae60; }
+  #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; }
 </style>
 </head>
 <body>
 
-<div id="ui">
-  <h1>Cloverleaf Interchange</h1>
-  <p>Constant Flow | Path Following Logic</p>
-</div>
-
-<div class="controls">
-  <button onclick="resetSim()">Restart Simulation</button>
-</div>
-
-<canvas id="simCanvas"></canvas>
+<div id="status">Status: Running...</div>
+<canvas id="sim"></canvas>
 
 <script>
-const canvas = document.getElementById("simCanvas");
+const canvas = document.getElementById("sim");
 const ctx = canvas.getContext("2d");
 
-canvas.width = 1000;
-canvas.height = 800;
+// Responsive Fullscreen
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-const roadWidth = 60;
 const cx = canvas.width / 2;
 const cy = canvas.height / 2;
+const roadW = 50;
 
-let cars = [];
-
-// --- PATH GENERATION ---
-// This creates the coordinates for straight lines, outer ramps, and inner loops.
-function getPath(type, startDir) {
+// Helper: Generate Smooth Arcs for Loops
+function createArc(startX, startY, radius, startAngle, endAngle, clockwise) {
     let points = [];
-    const r_outer = 120; // Radius for right turns
-    const r_inner = 70;  // Radius for clover loops
-    
-    if (type === 'straight') {
-        if (startDir === 'E') for(let i=-100; i<1100; i+=50) points.push({x: i, y: cy + 20});
-        if (startDir === 'W') for(let i=1100; i>-100; i-=50) points.push({x: i, y: cy - 20});
-        if (startDir === 'S') for(let i=-100; i<900; i+=50) points.push({x: cx - 20, y: i});
-        if (startDir === 'N') for(let i=900; i>-100; i-=50) points.push({x: cx + 20, y: i});
-    } 
-    
-    // Example: West-to-North (Right Turn Outer Ramp)
-    if (type === 'right' && startDir === 'W') {
-        for(let i=1100; i > cx + r_outer; i-=50) points.push({x: i, y: cy - 20});
-        for(let a=Math.PI*1.5; a < Math.PI*2; a+=0.2) points.push({x: cx+r_outer + Math.cos(a)*r_outer, y: cy-r_outer + Math.sin(a)*r_outer});
-        for(let i=cy-r_outer; i>-100; i-=50) points.push({x: cx + 20, y: i});
-    }
-
-    // Example: East-to-South (Clover Loop - Left Turn)
-    // A left turn in a cloverleaf is actually a 270-degree right-hand loop
-    if (type === 'clover' && startDir === 'E') {
-        for(let i=-100; i < cx - 40; i+=50) points.push({x: i, y: cy + 20});
-        for(let a=Math.PI*0.5; a < Math.PI*2.5; a+=0.2) {
-            points.push({x: cx - r_inner + Math.cos(a)*r_inner, y: cy + r_inner + Math.sin(a)*r_inner});
+    let step = 0.1;
+    if (clockwise) {
+        for (let a = startAngle; a < endAngle; a += step) {
+            points.push({ x: startX + Math.cos(a) * radius, y: startY + Math.sin(a) * radius });
         }
-        for(let i=cy+40; i<900; i+=50) points.push({x: cx - 20, y: i});
+    } else {
+        for (let a = startAngle; a > endAngle; a -= step) {
+            points.push({ x: startX + Math.cos(a) * radius, y: startY + Math.sin(a) * radius });
+        }
     }
-
     return points;
 }
 
-class Car {
-  constructor() {
-    this.init();
-  }
-
-  init() {
-    const types = ['straight', 'right', 'clover'];
-    const dirs = ['E', 'W', 'N', 'S'];
-    const t = types[Math.floor(Math.random()*types.length)];
-    const d = dirs[Math.floor(Math.random()*dirs.length)];
+// Generate Paths (Straight, Right Turn, and Clover Loop)
+function generatePath() {
+    let type = Math.random();
+    let p = [];
     
-    this.path = getPath(t, d);
-    this.targetIdx = 0;
-    this.x = this.path[0].x;
-    this.y = this.path[0].y;
-    this.speed = 1.5 + Math.random() * 1;
-    this.angle = 0;
-    this.color = `hsl(${Math.random() * 360}, 70%, 60%)`;
-  }
-
-  update() {
-    let target = this.path[this.targetIdx];
-    if (!target) {
-        this.init(); // Reset car to a new path when finished
-        return;
+    if (type < 0.4) { // Straight Path (East to West)
+        for(let i=-100; i < canvas.width + 100; i+=50) p.push({x: i, y: cy + 15});
+    } else if (type < 0.7) { // Right Turn Ramp
+        for(let i=-100; i < cx - 150; i+=50) p.push({x: i, y: cy + 15});
+        p = p.concat(createArc(cx - 150, cy + 150, 135, Math.PI * 1.5, Math.PI * 2, true));
+        for(let i=cy + 150; i < canvas.height + 100; i+=50) p.push({x: cx - 15, y: i});
+    } else { // The Clover Loop (Left Turn via 270-degree loop)
+        for(let i=-100; i < cx + 100; i+=50) p.push({x: i, y: cy + 15});
+        p = p.concat(createArc(cx + 100, cy + 100, 85, Math.PI * 1.5, Math.PI * 3.5, true));
+        for(let i=cy + 100; i > -100; i-=50) p.push({x: cx + 15, y: i});
     }
-
-    let dx = target.x - this.x;
-    let dy = target.y - this.y;
-    let dist = Math.sqrt(dx*dx + dy*dy);
-
-    if (dist < 10) {
-      this.targetIdx++;
-    } else {
-      this.angle = Math.atan2(dy, dx);
-      this.x += Math.cos(this.angle) * this.speed;
-      this.y += Math.sin(this.angle) * this.speed;
-    }
-  }
-
-  draw() {
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.rotate(this.angle);
-    ctx.fillStyle = this.color;
-    ctx.fillRect(-10, -5, 20, 10);
-    // Headlights
-    ctx.fillStyle = "white";
-    ctx.fillRect(8, -4, 3, 2);
-    ctx.fillRect(8, 2, 3, 2);
-    ctx.restore();
-  }
+    return p;
 }
 
-function drawInterchange() {
-  ctx.strokeStyle = "#444";
-  ctx.lineWidth = roadWidth;
-  
-  // Draw Loop Roads
-  ctx.beginPath();
-  ctx.arc(cx - 70, cy + 70, 70, 0, Math.PI * 2); // SW Loop
-  ctx.arc(cx + 70, cy - 70, 70, 0, Math.PI * 2); // NE Loop
-  ctx.stroke();
-
-  // Draw Main Roads
-  ctx.beginPath();
-  ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy); // E-W Road
-  ctx.stroke();
-
-  // Draw Bridge Shadow
-  ctx.strokeStyle = "rgba(0,0,0,0.3)";
-  ctx.lineWidth = roadWidth + 10;
-  ctx.beginPath();
-  ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height); // N-S Road Shadow
-  ctx.stroke();
-
-  // Draw N-S Road (The Bridge)
-  ctx.strokeStyle = "#555";
-  ctx.lineWidth = roadWidth;
-  ctx.beginPath();
-  ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height); 
-  ctx.stroke();
-  
-  // Lane Lines
-  ctx.strokeStyle = "white";
-  ctx.setLineDash([10, 15]);
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
-function spawnInitialCars() {
-    for(let i=0; i<40; i++) {
-        let c = new Car();
-        // Randomize starting position along the path
-        c.targetIdx = Math.floor(Math.random() * (c.path.length / 2));
-        if(c.path[c.targetIdx]) {
-            c.x = c.path[c.targetIdx].x;
-            c.y = c.path[c.targetIdx].y;
+class Car {
+    constructor() {
+        this.respawn();
+    }
+    respawn() {
+        this.path = generatePath();
+        this.index = 0;
+        this.x = this.path[0].x;
+        this.y = this.path[0].y;
+        this.speed = 2 + Math.random() * 2;
+        this.color = `hsl(${Math.random() * 360}, 70%, 50%)`;
+        this.angle = 0;
+    }
+    update() {
+        let target = this.path[this.index];
+        if (!target) {
+            this.respawn();
+            return;
         }
-        cars.push(c);
+        let dx = target.x - this.x;
+        let dy = target.y - this.y;
+        let dist = Math.sqrt(dx*dx + dy*dy);
+
+        if (dist < 5) {
+            this.index++;
+        } else {
+            this.angle = Math.atan2(dy, dx);
+            this.x += Math.cos(this.angle) * this.speed;
+            this.y += Math.sin(this.angle) * this.speed;
+        }
+    }
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-12, -6, 24, 12);
+        ctx.fillStyle = "white"; // Headlights
+        ctx.fillRect(10, -5, 4, 2);
+        ctx.fillRect(10, 3, 4, 2);
+        ctx.restore();
     }
 }
 
-function animate() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawInterchange();
-  
-  cars.forEach(car => {
-    car.update();
-    car.draw();
-  });
-  
-  requestAnimationFrame(animate);
+let cars = Array.from({length: 50}, () => new Car());
+
+function drawRoads() {
+    ctx.strokeStyle = "#444";
+    ctx.lineWidth = roadW;
+    
+    // Bottom Road (East-West)
+    ctx.beginPath();
+    ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy);
+    ctx.stroke();
+
+    // Ramps & Loops
+    ctx.beginPath();
+    ctx.arc(cx - 150, cy + 150, 135, Math.PI * 1.5, Math.PI * 2); // Sample Ramp
+    ctx.arc(cx + 100, cy + 100, 85, 0, Math.PI * 2); // Sample Loop
+    ctx.stroke();
+
+    // Bridge Shadow (N-S Road)
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = "black";
+    ctx.strokeStyle = "#555";
+    ctx.beginPath();
+    ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height);
+    ctx.stroke();
+    ctx.shadowBlur = 0; // Reset
 }
 
-function resetSim() {
-    cars = [];
-    spawnInitialCars();
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawRoads();
+    cars.forEach(c => {
+        c.update();
+        c.draw();
+    });
+    requestAnimationFrame(loop);
 }
 
-spawnInitialCars();
-animate();
+loop();
 </script>
 </body>
 </html>
