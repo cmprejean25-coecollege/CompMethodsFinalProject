@@ -1,6 +1,10 @@
 Traffic Simulation Project - Deep Code Explanation
 This document explains every part of the traffic simulation code in extreme detail. The goal is to help someone who does NOT know HTML, CSS, or JavaScript understand exactly how the program works step by step.
 
+To make the concepts in this simulation easier to understand, the accompanying Google Colab notebook presents a simplified version of the system that focuses only on one core mechanics: movement. While the full program includes multiple interacting systems like traffic lights, collision detection, and UI overlays, the notebook strips these away so you can clearly see how car behavior would be without traffic lights.
+
+ # Collab Notebook Version: https://colab.research.google.com/drive/1V2YrZswGk3d_Hpr7gHRd_o4NQYIwPDa8?usp=sharing
+
  # 1. HTML STRUCTURE (The Page Setup)
 html
 <!DOCTYPE html>
