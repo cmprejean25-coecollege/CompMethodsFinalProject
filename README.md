@@ -1,4 +1,4 @@
-Traffic Simulation Project
+Traffic Simulation Project.
 This ReadMe helps explain every part of the traffic simulation code in detail. The goal of this is to help someone who does NOT know HTML, CSS, or JavaScript with understanding exactly how the program works step by step.
 
  # Full Simulation: https://cmprejean25-coecollege.github.io/CompMethodsFinalProject/
