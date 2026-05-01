@@ -6,14 +6,14 @@
   body { margin: 0; background: #1a1a1a; overflow: hidden; font-family: sans-serif; }
   canvas { display: block; background: #27ae60; }
   #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; pointer-events: none; }
-  b { color: #2ecc71; }
+  b { color: #e74c3c; } /* Changed to match car color */
 </style>
 </head>
 <body>
 
 <div id="status">
   <b>Full Cloverleaf Interchange</b><br>
-  300 Cars | Waypoint Navigation<br>
+  300 Cars | Directional Indicators<br>
   Continuous Flow (No Lights)
 </div>
 <canvas id="sim"></canvas>
@@ -28,10 +28,9 @@ canvas.height = window.innerHeight;
 const cx = canvas.width / 2;
 const cy = canvas.height / 2;
 const roadW = 50;
-const loopR = 80;   // Radius of the clover loops
-const rampR = 180;  // Radius of the outer ramps
+const loopR = 80;  
+const rampR = 180; 
 
-// --- MATH HELPERS ---
 function createArc(centerX, centerY, radius, startAngle, endAngle, clockwise) {
     let points = [];
     let steps = 15; 
@@ -43,7 +42,6 @@ function createArc(centerX, centerY, radius, startAngle, endAngle, clockwise) {
     return points;
 }
 
-// --- PATH GENERATOR ---
 function generatePath() {
     let p = [];
     const directions = ['N', 'S', 'E', 'W'];
@@ -51,24 +49,22 @@ function generatePath() {
     
     let start = directions[Math.floor(Math.random() * 4)];
     let type = types[Math.floor(Math.random() * 3)];
-
-    // Offsets to keep cars in lanes (right-hand traffic)
     const lane = 15;
 
-    if (start === 'W') { // Coming from Left
+    if (start === 'W') {
         if (type === 'straight') {
             for(let x = -100; x < canvas.width + 100; x += 100) p.push({x: x, y: cy + lane});
         } else if (type === 'right') {
             for(let x = -100; x < cx - rampR; x += 50) p.push({x: x, y: cy + lane});
             p = p.concat(createArc(cx - rampR, cy + rampR, rampR - lane, Math.PI * 1.5, Math.PI * 2, true));
             for(let y = cy + rampR; y < canvas.height + 100; y += 50) p.push({x: cx - lane, y: y});
-        } else { // Clover Loop (Left Turn)
+        } else { 
             for(let x = -100; x < cx + loopR; x += 50) p.push({x: x, y: cy + lane});
             p = p.concat(createArc(cx + loopR, cy + loopR, loopR - lane, Math.PI * 1.5, Math.PI * 3.5, true));
             for(let y = cy + loopR; y > -100; y -= 50) p.push({x: cx + lane, y: y});
         }
     } 
-    else if (start === 'E') { // Coming from Right
+    else if (start === 'E') {
         if (type === 'straight') {
             for(let x = canvas.width + 100; x > -100; x -= 100) p.push({x: x, y: cy - lane});
         } else if (type === 'right') {
@@ -81,7 +77,7 @@ function generatePath() {
             for(let y = cy - loopR; y < canvas.height + 100; y += 50) p.push({x: cx - lane, y: y});
         }
     }
-    else if (start === 'N') { // Coming from Top
+    else if (start === 'N') {
         if (type === 'straight') {
             for(let y = -100; y < canvas.height + 100; y += 100) p.push({x: cx - lane, y: y});
         } else if (type === 'right') {
@@ -94,7 +90,7 @@ function generatePath() {
             for(let x = cx - loopR; x < canvas.width + 100; x += 50) p.push({x: x, y: cy + lane});
         }
     }
-    else if (start === 'S') { // Coming from Bottom
+    else if (start === 'S') {
         if (type === 'straight') {
             for(let y = canvas.height + 100; y > -100; y -= 100) p.push({x: cx + lane, y: y});
         } else if (type === 'right') {
@@ -107,7 +103,6 @@ function generatePath() {
             for(let x = cx + loopR; x > -100; x -= 50) p.push({x: x, y: cy - lane});
         }
     }
-
     return p;
 }
 
@@ -119,7 +114,7 @@ class Car {
         this.x = this.path[this.index].x;
         this.y = this.path[this.index].y;
         this.speed = 1.5 + Math.random() * 2;
-        this.color = `hsl(${Math.random() * 360}, 60%, 60%)`;
+        this.color = "#c0392b"; // Uniform Red
         this.angle = 0;
     }
     update() {
@@ -138,13 +133,27 @@ class Car {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle);
+        
+        // Body
         ctx.fillStyle = this.color;
         ctx.fillRect(-12, -6, 24, 12);
+        
+        // Directional Indicators
+        // Headlights (White) - Front of car
+        ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+        ctx.fillRect(8, -5, 4, 3); // Right headlight
+        ctx.fillRect(8, 2, 4, 3);  // Left headlight
+        
+        // Taillights (Dark Red) - Back of car
+        ctx.fillStyle = "#600";
+        ctx.fillRect(-12, -5, 2, 3);
+        ctx.fillRect(-12, 2, 2, 3);
+        
         ctx.restore();
     }
 }
 
-let cars = Array.from({length: 120}, () => new Car());
+let cars = Array.from({length: 300}, () => new Car());
 
 function drawBackground() {
     ctx.strokeStyle = "#444";
