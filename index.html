@@ -1,219 +1,323 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Realistic Cloverleaf Simulation - Fixed</title>
+<meta charset="UTF-8">
+<title>Traffic Simulation - 300 Cars Final</title>
+
 <style>
-  body { margin: 0; background: #1a1a1a; overflow: hidden; font-family: sans-serif; }
-  canvas { display: block; background: #27ae60; }
-  #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; pointer-events: none; }
-  b { color: #e74c3c; }
+  body {
+    margin: 0;
+    background: #2c3e50;
+    overflow: hidden;
+  }
+
+  canvas {
+    display: block;
+    margin: auto;
+    background: #27ae60;
+  }
+
+  #uiOverlay, #crashOverlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    font-family: Arial, sans-serif;
+    color: white;
+    pointer-events: none;
+  }
+
+  #uiOverlay { background: rgba(0,0,0,0.6); pointer-events: all; }
+
+  #crashOverlay {
+    display: none;
+    background: rgba(200,0,0,0.65);
+    font-size: 28px;
+    pointer-events: all;
+  }
+
+  button {
+    padding: 12px 24px;
+    font-size: 18px;
+    margin-top: 10px;
+    cursor: pointer;
+    background: #ecf0f1;
+    border: none;
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+
+  button:hover { background: #bdc3c7; }
 </style>
 </head>
+
 <body>
 
-<div id="status">
-  <b>Realistic Cloverleaf (Fixed)</b><br>
-  Aligned Paths | Corrected Geometries<br>
-  Smooth Tracking
+<canvas id="simCanvas" width="800" height="600"></canvas>
+
+<div id="uiOverlay">
+  <h1>🚦 Traffic Simulation</h1>
+  <p>300 Cars | Intersection Buffer Logic</p>
+  <button id="startBtn">▶ Start Simulation</button>
 </div>
-<canvas id="sim"></canvas>
+
+<div id="crashOverlay">
+  🚨 COLLISION DETECTED 🚨
+  <button id="restartBtn">🔁 Restart</button>
+</div>
 
 <script>
-const canvas = document.getElementById("sim");
+const canvas = document.getElementById("simCanvas");
 const ctx = canvas.getContext("2d");
 
-function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-}
-window.addEventListener('resize', resize);
-resize();
+const uiOverlay = document.getElementById("uiOverlay");
+const crashOverlay = document.getElementById("crashOverlay");
+const startBtn = document.getElementById("startBtn");
+const restartBtn = document.getElementById("restartBtn");
 
-const cx = canvas.width / 2;
-const cy = canvas.height / 2;
-const roadW = 50;
-const loopR = 90;   
-const rampDist = 220; 
-const lane = 15; 
+const roadWidth = 120;
+let running = false;
 
-// --- MATH HELPERS ---
-function createArc(centerX, centerY, radius, startAngle, endAngle, clockwise = true) {
-    let points = [];
-    let steps = 40; // Increased steps for smoothness
-    let diff = endAngle - startAngle;
-    for (let i = 0; i <= steps; i++) {
-        let a = startAngle + (diff * (i / steps));
-        points.push({ x: centerX + Math.cos(a) * radius, y: centerY + Math.sin(a) * radius });
-    }
-    return points;
-}
+// ---------------- LIGHT SYSTEM ----------------
+let lightState = "NS"; 
+let timer = 0;
+const GREEN_TIME = 250;
+const BUFFER_TIME = 100; // Time when all lights are red to clear intersection
+let nextPhase = "EW";
 
-function createCurve(x1, y1, cpX, cpY, x2, y2) {
-    let points = [];
-    for (let t = 0; t <= 1; t += 0.02) { // Higher resolution
-        let x = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * cpX + t * t * x2;
-        let y = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * cpY + t * t * y2;
-        points.push({ x: x, y: y });
-    }
-    return points;
-}
-
-// --- PATH GENERATOR ---
-function generatePath() {
-    let p = [];
-    const directions = ['N', 'S', 'E', 'W'];
-    const types = ['straight', 'right', 'loop'];
-    let start = directions[Math.floor(Math.random() * 4)];
-    let type = types[Math.floor(Math.random() * 3)];
-
-    if (start === 'W') { 
-        if (type === 'straight') {
-            for(let x = -100; x < canvas.width + 100; x += 100) p.push({x: x, y: cy + lane});
-        } else if (type === 'right') { 
-            for(let x = -100; x < cx - rampDist; x += 50) p.push({x: x, y: cy + lane});
-            p = p.concat(createCurve(cx - rampDist, cy + lane, cx - rampDist, cy + rampDist, cx - lane, cy + rampDist));
-            for(let y = cy + rampDist; y < canvas.height + 100; y += 50) p.push({x: cx - lane, y: y});
-        } else { 
-            for(let x = -100; x < cx + loopR; x += 50) p.push({x: x, y: cy + lane});
-            p = p.concat(createArc(cx + loopR, cy + loopR, loopR - lane, Math.PI * 1.5, Math.PI * 3.5));
-            for(let y = cy + loopR; y > -100; y -= 50) p.push({x: cx + lane, y: y});
-        }
-    } 
-    else if (start === 'E') { 
-        if (type === 'straight') {
-            for(let x = canvas.width + 100; x > -100; x -= 100) p.push({x: x, y: cy - lane});
-        } else if (type === 'right') { 
-            for(let x = canvas.width + 100; x > cx + rampDist; x -= 50) p.push({x: x, y: cy - lane});
-            p = p.concat(createCurve(cx + rampDist, cy - lane, cx + rampDist, cy - rampDist, cx + lane, cy - rampDist));
-            for(let y = cy - rampDist; y > -100; y -= 50) p.push({x: cx + lane, y: y});
-        } else { 
-            for(let x = canvas.width + 100; x > cx - loopR; x -= 50) p.push({x: x, y: cy - lane});
-            p = p.concat(createArc(cx - loopR, cy - loopR, loopR - lane, Math.PI * 0.5, Math.PI * 2.5));
-            for(let y = cy - loopR; y < canvas.height + 100; y += 50) p.push({x: cx - lane, y: y});
-        }
-    }
-    else if (start === 'N') { 
-        if (type === 'straight') {
-            for(let y = -100; y < canvas.height + 100; y += 100) p.push({x: cx - lane, y: y});
-        } else if (type === 'right') { 
-            for(let y = -100; y < cy - rampDist; y += 50) p.push({x: cx - lane, y: y});
-            p = p.concat(createCurve(cx - lane, cy - rampDist, cx - rampDist, cy - rampDist, cx - rampDist, cy - lane));
-            for(let x = cx - rampDist; x > -100; x -= 50) p.push({x: x, y: cy - lane});
-        } else { 
-            for(let y = -100; y < cy + loopR; y += 50) p.push({x: cx - lane, y: y});
-            p = p.concat(createArc(cx - loopR, cy + loopR, loopR - lane, 0, Math.PI * 2));
-            for(let x = cx - loopR; x < canvas.width + 100; x += 50) p.push({x: x, y: cy + lane});
-        }
-    }
-    else if (start === 'S') { 
-        if (type === 'straight') {
-            for(let y = canvas.height + 100; y > -100; y -= 100) p.push({x: cx + lane, y: y});
-        } else if (type === 'right') { 
-            for(let y = canvas.height + 100; y > cy + rampDist; y -= 50) p.push({x: cx + lane, y: y});
-            p = p.concat(createCurve(cx + lane, cy + rampDist, cx + rampDist, cy + rampDist, cx + rampDist, cy + lane));
-            for(let x = cx + rampDist; x < canvas.width + 100; x += 50) p.push({x: x, y: cy + lane});
-        } else { 
-            for(let y = canvas.height + 100; y > cy - loopR; y -= 50) p.push({x: cx + lane, y: y});
-            p = p.concat(createArc(cx + loopR, cy - loopR, loopR - lane, Math.PI, Math.PI * 3));
-            for(let x = cx + loopR; x > -100; x -= 50) p.push({x: x, y: cy - lane});
-        }
-    }
-    return p;
-}
-
+// ---------------- CAR CLASS ----------------
 class Car {
-    constructor() { this.respawn(true); }
-    respawn(isInitial = false) {
-        this.path = generatePath();
-        this.index = isInitial ? Math.floor(Math.random() * (this.path.length - 1)) : 0;
-        this.x = this.path[this.index].x;
-        this.y = this.path[this.index].y;
-        this.speed = 2.0 + Math.random() * 1.5;
-        this.color = ["#c0392b", "#e67e22", "#f1c40f", "#2980b9", "#ecf0f1"][Math.floor(Math.random()*5)];
-        this.angle = 0;
+  constructor(x, y, dx, dy) {
+    this.x = x;
+    this.y = y;
+    this.dx = dx;
+    this.dy = dy;
+    this.speed = 1.8;
+    this.width = 22; 
+    this.height = 12;
+    this.crossedIntersection = false;
+  }
+
+  getBounds() {
+    // Correct hitbox orientation for rotation
+    if (this.dy !== 0) {
+        return { x: this.x - this.height/2, y: this.y - this.width/2, w: this.height, h: this.width };
     }
-    update() {
-        let target = this.path[this.index];
-        if (!target) { this.respawn(); return; }
-        let dx = target.x - this.x, dy = target.y - this.y;
-        let dist = Math.sqrt(dx*dx + dy*dy);
-        if (dist < 10) { this.index++; } 
-        else {
-            this.angle = Math.atan2(dy, dx);
-            this.x += Math.cos(this.angle) * this.speed;
-            this.y += Math.sin(this.angle) * this.speed;
+    return { x: this.x - this.width/2, y: this.y - this.height/2, w: this.width, h: this.height };
+  }
+
+  update(frontCar) {
+    let canMove = true;
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+
+    const stopLines = {
+      N: cy - roadWidth / 2 - 5,
+      S: cy + roadWidth / 2 + 5,
+      W: cx - roadWidth / 2 - 5,
+      E: cx + roadWidth / 2 + 5
+    };
+
+    // 1. Follow Distance Logic
+    if (frontCar) {
+      let dist = Infinity;
+      if (this.dx > 0) dist = frontCar.x - this.x;
+      else if (this.dx < 0) dist = this.x - frontCar.x;
+      else if (this.dy > 0) dist = frontCar.y - this.y;
+      else if (this.dy < 0) dist = this.y - frontCar.y;
+
+      if (dist < 40) canMove = false; 
+    }
+
+    // 2. Traffic Light Logic
+    if (!this.crossedIntersection) {
+      const lookAhead = 25;
+      if (this.dy !== 0) {
+        const isGreen = (lightState === "NS");
+        const stopLine = (this.dy > 0) ? stopLines.N : stopLines.S;
+        const willCross = (this.dy > 0) ? (this.y + lookAhead > stopLine && this.y < stopLine) : (this.y - lookAhead < stopLine && this.y > stopLine);
+        if (willCross && !isGreen) canMove = false;
+      } else {
+        const isGreen = (lightState === "EW");
+        const stopLine = (this.dx > 0) ? stopLines.W : stopLines.E;
+        const willCross = (this.dx > 0) ? (this.x + lookAhead > stopLine && this.x < stopLine) : (this.x - lookAhead < stopLine && this.x > stopLine);
+        if (willCross && !isGreen) canMove = false;
+      }
+    }
+
+    if (canMove) {
+      this.x += this.dx * this.speed;
+      this.y += this.dy * this.speed;
+
+      // Mark as crossed once center is past the middle of the intersection
+      if (Math.abs(this.x - cx) < 10 && Math.abs(this.y - cy) < 10) {
+          this.crossedIntersection = true;
+      }
+    }
+  }
+
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+
+    // Original rotation logic
+    if (this.dx > 0) ctx.rotate(0);
+    else if (this.dx < 0) ctx.rotate(Math.PI);
+    else if (this.dy > 0) ctx.rotate(Math.PI/2);
+    else ctx.rotate(-Math.PI/2);
+
+    ctx.fillStyle = "#3498db";
+    ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
+    
+    // Headlights for direction visibility
+    ctx.fillStyle = "white";
+    ctx.fillRect(this.width/2 - 4, -this.height/2, 4, 2);
+    ctx.fillRect(this.width/2 - 4, this.height/2 - 2, 4, 2);
+
+    ctx.restore();
+  }
+}
+
+// ---------------- ENGINE ----------------
+let cars = [];
+
+function createCars() {
+  const perLane = 75; // Total 300 cars
+  const spacing = 50; 
+
+  for (let i = 0; i < perLane; i++) {
+    // Westbound
+    cars.push(new Car(canvas.width + 100 + (i * spacing), canvas.height/2 - 25, -1, 0));
+    // Eastbound
+    cars.push(new Car(-(100 + i * spacing), canvas.height/2 + 25, 1, 0));
+    // Southbound
+    cars.push(new Car(canvas.width/2 - 25, -(100 + i * spacing), 0, 1));
+    // Northbound
+    cars.push(new Car(canvas.width/2 + 25, canvas.height + 100 + (i * spacing), 0, -1));
+  }
+}
+
+function updateLights() {
+  timer++;
+  if (lightState === "NS" && timer > GREEN_TIME) {
+    lightState = "RED_ALL";
+    timer = 0;
+    nextPhase = "EW";
+  } else if (lightState === "EW" && timer > GREEN_TIME) {
+    lightState = "RED_ALL";
+    timer = 0;
+    nextPhase = "NS";
+  } else if (lightState === "RED_ALL" && timer > BUFFER_TIME) {
+    lightState = nextPhase;
+    timer = 0;
+  }
+}
+
+function drawEnvironment() {
+  // Asphalt
+  ctx.fillStyle = "#555";
+  ctx.fillRect(0, canvas.height/2 - roadWidth/2, canvas.width, roadWidth);
+  ctx.fillRect(canvas.width/2 - roadWidth/2, 0, roadWidth, canvas.height);
+  
+  // Lane Dividers
+  ctx.strokeStyle = "#f1c40f";
+  ctx.setLineDash([10, 10]);
+  ctx.beginPath();
+  ctx.moveTo(0, canvas.height/2); ctx.lineTo(canvas.width, canvas.height/2);
+  ctx.moveTo(canvas.width/2, 0); ctx.lineTo(canvas.width/2, canvas.height);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Traffic Lights
+  const cx = canvas.width/2;
+  const cy = canvas.height/2;
+  const offset = roadWidth/2 + 15;
+
+  // NS Lights (Green only during NS state)
+  ctx.fillStyle = (lightState === "NS") ? "#2ecc71" : "#e74c3c";
+  ctx.beginPath();
+  ctx.arc(cx - offset, cy - offset, 8, 0, Math.PI*2);
+  ctx.arc(cx + offset, cy + offset, 8, 0, Math.PI*2);
+  ctx.fill();
+
+  // EW Lights (Green only during EW state)
+  ctx.fillStyle = (lightState === "EW") ? "#2ecc71" : "#e74c3c";
+  ctx.beginPath();
+  ctx.arc(cx + offset, cy - offset, 8, 0, Math.PI*2);
+  ctx.arc(cx - offset, cy + offset, 8, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function checkCollision(a, b) {
+  const A = a.getBounds();
+  const B = b.getBounds();
+  return !(A.x + A.w < B.x || A.x > B.x + B.w || A.y + A.h < B.y || A.y > B.y + B.h);
+}
+
+function animate() {
+  if (!running) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  drawEnvironment();
+  updateLights();
+
+  for (let i = 0; i < cars.length; i++) {
+    let car = cars[i];
+    
+    // Front Car detection for spacing
+    let frontCar = null;
+    let minDist = Infinity;
+    for (let other of cars) {
+      if (other === car) continue;
+      if (car.dx === other.dx && car.dy === other.dy) {
+          let d = Infinity;
+          if (car.dx > 0 && other.x > car.x) d = other.x - car.x;
+          else if (car.dx < 0 && other.x < car.x) d = car.x - other.x;
+          else if (car.dy > 0 && other.y > car.y) d = other.y - car.y;
+          else if (car.dy < 0 && other.y < car.y) d = car.y - other.y;
+
+          if (d < minDist) { minDist = d; frontCar = other; }
+      }
+    }
+
+    car.update(frontCar);
+    car.draw();
+
+    // Check collisions ONLY if car is inside the canvas view
+    if (car.x > 0 && car.x < canvas.width && car.y > 0 && car.y < canvas.height) {
+        for (let j = i + 1; j < cars.length; j++) {
+            let other = cars[j];
+            // Narrow down checks to nearby cars for performance
+            if (Math.abs(car.x - other.x) < 30 && Math.abs(car.y - other.y) < 30) {
+                if (checkCollision(car, other)) {
+                    running = false;
+                    crashOverlay.style.display = "flex";
+                    return;
+                }
+            }
         }
     }
-    draw() {
-        ctx.save();
-        ctx.translate(this.x, this.y);
-        ctx.rotate(this.angle);
-        // Body
-        ctx.fillStyle = this.color;
-        ctx.fillRect(-12, -6, 24, 12);
-        // Windshield
-        ctx.fillStyle = "rgba(0,0,0,0.3)";
-        ctx.fillRect(2, -5, 6, 10);
-        // Headlights
-        ctx.fillStyle = "white";
-        ctx.fillRect(10, -5, 3, 2); ctx.fillRect(10, 3, 3, 2);
-        // Taillights
-        ctx.fillStyle = "red";
-        ctx.fillRect(-13, -5, 2, 2); ctx.fillRect(-13, 3, 2, 2);
-        ctx.restore();
-    }
+  }
+
+  requestAnimationFrame(animate);
 }
 
-let cars = Array.from({length: 300}, () => new Car());
-
-function drawBackground() {
-    ctx.strokeStyle = "#444";
-    ctx.lineWidth = roadW;
-    ctx.lineCap = "round";
-
-    // Main E-W Road
-    ctx.beginPath();
-    ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy);
-    ctx.stroke();
-
-    // Loops (Corrected placement)
-    ctx.beginPath();
-    ctx.arc(cx - loopR, cy + loopR, loopR, 0, Math.PI * 2);
-    ctx.arc(cx + loopR, cy - loopR, loopR, 0, Math.PI * 2);
-    ctx.arc(cx + loopR, cy + loopR, loopR, 0, Math.PI * 2);
-    ctx.arc(cx - loopR, cy - loopR, loopR, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Outer Ramps
-    ctx.beginPath();
-    ctx.moveTo(cx - lane, 0); 
-    ctx.quadraticCurveTo(cx - rampDist, cy - rampDist, 0, cy - lane);
-    ctx.moveTo(canvas.width, cy - lane); 
-    ctx.quadraticCurveTo(cx + rampDist, cy - rampDist, cx + lane, 0);
-    ctx.moveTo(cx + lane, canvas.height); 
-    ctx.quadraticCurveTo(cx + rampDist, cy + rampDist, canvas.width, cy + lane);
-    ctx.moveTo(0, cy + lane); 
-    ctx.quadraticCurveTo(cx - rampDist, cy + rampDist, cx - lane, canvas.height);
-    ctx.stroke();
-
-    // North-South Bridge
-    ctx.save();
-    ctx.shadowBlur = 15; ctx.shadowColor = "rgba(0,0,0,0.7)";
-    ctx.strokeStyle = "#4d4d4d";
-    ctx.beginPath();
-    ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height);
-    ctx.stroke();
-    ctx.restore();
+function reset() {
+  cars = [];
+  lightState = "NS";
+  timer = 0;
+  crashOverlay.style.display = "none";
+  uiOverlay.style.display = "none";
+  createCars();
+  running = true;
+  animate();
 }
 
-function loop() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawBackground();
-    cars.forEach(c => { c.update(); c.draw(); });
-    requestAnimationFrame(loop);
-}
-
-loop();
+startBtn.addEventListener("click", reset);
+restartBtn.addEventListener("click", reset);
 </script>
+
 </body>
 </html>
