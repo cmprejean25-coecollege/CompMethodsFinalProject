@@ -1,91 +1,134 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Cloverleaf Interchange - Final Working Version</title>
+<title>Full Cloverleaf Interchange Simulation</title>
 <style>
   body { margin: 0; background: #1a1a1a; overflow: hidden; font-family: sans-serif; }
   canvas { display: block; background: #27ae60; }
-  #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; }
+  #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; pointer-events: none; }
+  b { color: #2ecc71; }
 </style>
 </head>
 <body>
 
-<div id="status">Status: Running...</div>
+<div id="status">
+  <b>Full Cloverleaf Interchange</b><br>
+  300 Cars | Waypoint Navigation<br>
+  Continuous Flow (No Lights)
+</div>
 <canvas id="sim"></canvas>
 
 <script>
 const canvas = document.getElementById("sim");
 const ctx = canvas.getContext("2d");
 
-// Responsive Fullscreen
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
 const cx = canvas.width / 2;
 const cy = canvas.height / 2;
 const roadW = 50;
+const loopR = 80;   // Radius of the clover loops
+const rampR = 180;  // Radius of the outer ramps
 
-// Helper: Generate Smooth Arcs for Loops
-function createArc(startX, startY, radius, startAngle, endAngle, clockwise) {
+// --- MATH HELPERS ---
+function createArc(centerX, centerY, radius, startAngle, endAngle, clockwise) {
     let points = [];
-    let step = 0.1;
-    if (clockwise) {
-        for (let a = startAngle; a < endAngle; a += step) {
-            points.push({ x: startX + Math.cos(a) * radius, y: startY + Math.sin(a) * radius });
-        }
-    } else {
-        for (let a = startAngle; a > endAngle; a -= step) {
-            points.push({ x: startX + Math.cos(a) * radius, y: startY + Math.sin(a) * radius });
-        }
+    let steps = 15; 
+    let diff = endAngle - startAngle;
+    for (let i = 0; i <= steps; i++) {
+        let a = startAngle + (diff * (i / steps));
+        points.push({ x: centerX + Math.cos(a) * radius, y: centerY + Math.sin(a) * radius });
     }
     return points;
 }
 
-// Generate Paths (Straight, Right Turn, and Clover Loop)
+// --- PATH GENERATOR ---
 function generatePath() {
-    let type = Math.random();
     let p = [];
+    const directions = ['N', 'S', 'E', 'W'];
+    const types = ['straight', 'right', 'loop'];
     
-    if (type < 0.4) { // Straight Path (East to West)
-        for(let i=-100; i < canvas.width + 100; i+=50) p.push({x: i, y: cy + 15});
-    } else if (type < 0.7) { // Right Turn Ramp
-        for(let i=-100; i < cx - 150; i+=50) p.push({x: i, y: cy + 15});
-        p = p.concat(createArc(cx - 150, cy + 150, 135, Math.PI * 1.5, Math.PI * 2, true));
-        for(let i=cy + 150; i < canvas.height + 100; i+=50) p.push({x: cx - 15, y: i});
-    } else { // The Clover Loop (Left Turn via 270-degree loop)
-        for(let i=-100; i < cx + 100; i+=50) p.push({x: i, y: cy + 15});
-        p = p.concat(createArc(cx + 100, cy + 100, 85, Math.PI * 1.5, Math.PI * 3.5, true));
-        for(let i=cy + 100; i > -100; i-=50) p.push({x: cx + 15, y: i});
+    let start = directions[Math.floor(Math.random() * 4)];
+    let type = types[Math.floor(Math.random() * 3)];
+
+    // Offsets to keep cars in lanes (right-hand traffic)
+    const lane = 15;
+
+    if (start === 'W') { // Coming from Left
+        if (type === 'straight') {
+            for(let x = -100; x < canvas.width + 100; x += 100) p.push({x: x, y: cy + lane});
+        } else if (type === 'right') {
+            for(let x = -100; x < cx - rampR; x += 50) p.push({x: x, y: cy + lane});
+            p = p.concat(createArc(cx - rampR, cy + rampR, rampR - lane, Math.PI * 1.5, Math.PI * 2, true));
+            for(let y = cy + rampR; y < canvas.height + 100; y += 50) p.push({x: cx - lane, y: y});
+        } else { // Clover Loop (Left Turn)
+            for(let x = -100; x < cx + loopR; x += 50) p.push({x: x, y: cy + lane});
+            p = p.concat(createArc(cx + loopR, cy + loopR, loopR - lane, Math.PI * 1.5, Math.PI * 3.5, true));
+            for(let y = cy + loopR; y > -100; y -= 50) p.push({x: cx + lane, y: y});
+        }
+    } 
+    else if (start === 'E') { // Coming from Right
+        if (type === 'straight') {
+            for(let x = canvas.width + 100; x > -100; x -= 100) p.push({x: x, y: cy - lane});
+        } else if (type === 'right') {
+            for(let x = canvas.width + 100; x > cx + rampR; x -= 50) p.push({x: x, y: cy - lane});
+            p = p.concat(createArc(cx + rampR, cy - rampR, rampR - lane, Math.PI * 0.5, Math.PI, true));
+            for(let y = cy - rampR; y > -100; y -= 50) p.push({x: cx + lane, y: y});
+        } else {
+            for(let x = canvas.width + 100; x > cx - loopR; x -= 50) p.push({x: x, y: cy - lane});
+            p = p.concat(createArc(cx - loopR, cy - loopR, loopR - lane, Math.PI * 0.5, Math.PI * 2.5, true));
+            for(let y = cy - loopR; y < canvas.height + 100; y += 50) p.push({x: cx - lane, y: y});
+        }
     }
+    else if (start === 'N') { // Coming from Top
+        if (type === 'straight') {
+            for(let y = -100; y < canvas.height + 100; y += 100) p.push({x: cx - lane, y: y});
+        } else if (type === 'right') {
+            for(let y = -100; y < cy - rampR; y += 50) p.push({x: cx - lane, y: y});
+            p = p.concat(createArc(cx - rampR, cy - rampR, rampR - lane, 0, Math.PI * 0.5, true));
+            for(let x = cx - rampR; x > -100; x -= 50) p.push({x: x, y: cy - lane});
+        } else {
+            for(let y = -100; y < cy + loopR; y += 50) p.push({x: cx - lane, y: y});
+            p = p.concat(createArc(cx - loopR, cy + loopR, loopR - lane, 0, Math.PI * 2, true));
+            for(let x = cx - loopR; x < canvas.width + 100; x += 50) p.push({x: x, y: cy + lane});
+        }
+    }
+    else if (start === 'S') { // Coming from Bottom
+        if (type === 'straight') {
+            for(let y = canvas.height + 100; y > -100; y -= 100) p.push({x: cx + lane, y: y});
+        } else if (type === 'right') {
+            for(let y = canvas.height + 100; y > cy + rampR; y -= 50) p.push({x: cx + lane, y: y});
+            p = p.concat(createArc(cx + rampR, cy + rampR, rampR - lane, Math.PI, Math.PI * 1.5, true));
+            for(let x = cx + rampR; x < canvas.width + 100; x += 50) p.push({x: x, y: cy + lane});
+        } else {
+            for(let y = canvas.height + 100; y > cy - loopR; y -= 50) p.push({x: cx + lane, y: y});
+            p = p.concat(createArc(cx + loopR, cy - loopR, loopR - lane, Math.PI, Math.PI * 3, true));
+            for(let x = cx + loopR; x > -100; x -= 50) p.push({x: x, y: cy - lane});
+        }
+    }
+
     return p;
 }
 
 class Car {
-    constructor() {
-        this.respawn();
-    }
-    respawn() {
+    constructor() { this.respawn(true); }
+    respawn(isInitial = false) {
         this.path = generatePath();
-        this.index = 0;
-        this.x = this.path[0].x;
-        this.y = this.path[0].y;
-        this.speed = 2 + Math.random() * 2;
-        this.color = `hsl(${Math.random() * 360}, 70%, 50%)`;
+        this.index = isInitial ? Math.floor(Math.random() * (this.path.length - 1)) : 0;
+        this.x = this.path[this.index].x;
+        this.y = this.path[this.index].y;
+        this.speed = 1.5 + Math.random() * 2;
+        this.color = `hsl(${Math.random() * 360}, 60%, 60%)`;
         this.angle = 0;
     }
     update() {
         let target = this.path[this.index];
-        if (!target) {
-            this.respawn();
-            return;
-        }
-        let dx = target.x - this.x;
-        let dy = target.y - this.y;
+        if (!target) { this.respawn(); return; }
+        let dx = target.x - this.x, dy = target.y - this.y;
         let dist = Math.sqrt(dx*dx + dy*dy);
-
-        if (dist < 5) {
-            this.index++;
-        } else {
+        if (dist < 8) { this.index++; } 
+        else {
             this.angle = Math.atan2(dy, dx);
             this.x += Math.cos(this.angle) * this.speed;
             this.y += Math.sin(this.angle) * this.speed;
@@ -97,49 +140,58 @@ class Car {
         ctx.rotate(this.angle);
         ctx.fillStyle = this.color;
         ctx.fillRect(-12, -6, 24, 12);
-        ctx.fillStyle = "white"; // Headlights
-        ctx.fillRect(10, -5, 4, 2);
-        ctx.fillRect(10, 3, 4, 2);
         ctx.restore();
     }
 }
 
-let cars = Array.from({length: 50}, () => new Car());
+let cars = Array.from({length: 120}, () => new Car());
 
-function drawRoads() {
+function drawBackground() {
     ctx.strokeStyle = "#444";
     ctx.lineWidth = roadW;
     
-    // Bottom Road (East-West)
+    // Draw Loops
+    ctx.beginPath();
+    ctx.arc(cx - loopR, cy + loopR, loopR, 0, Math.PI * 2);
+    ctx.arc(cx + loopR, cy - loopR, loopR, 0, Math.PI * 2);
+    ctx.arc(cx + loopR, cy + loopR, loopR, 0, Math.PI * 2);
+    ctx.arc(cx - loopR, cy - loopR, loopR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Draw Ramps
+    ctx.beginPath();
+    ctx.arc(cx - rampR, cy + rampR, rampR, Math.PI * 1.5, Math.PI * 2);
+    ctx.arc(cx + rampR, cy - rampR, rampR, Math.PI * 0.5, Math.PI);
+    ctx.arc(cx - rampR, cy - rampR, rampR, 0, Math.PI * 0.5);
+    ctx.arc(cx + rampR, cy + rampR, rampR, Math.PI, Math.PI * 1.5);
+    ctx.stroke();
+
+    // East-West Main Road
     ctx.beginPath();
     ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy);
     ctx.stroke();
 
-    // Ramps & Loops
-    ctx.beginPath();
-    ctx.arc(cx - 150, cy + 150, 135, Math.PI * 1.5, Math.PI * 2); // Sample Ramp
-    ctx.arc(cx + 100, cy + 100, 85, 0, Math.PI * 2); // Sample Loop
-    ctx.stroke();
-
-    // Bridge Shadow (N-S Road)
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = "black";
+    // North-South Bridge (with shadow)
+    ctx.save();
+    ctx.shadowBlur = 15; ctx.shadowColor = "black";
     ctx.strokeStyle = "#555";
     ctx.beginPath();
     ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height);
     ctx.stroke();
-    ctx.shadowBlur = 0; // Reset
+    ctx.restore();
 }
 
 function loop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawRoads();
-    cars.forEach(c => {
-        c.update();
-        c.draw();
-    });
+    drawBackground();
+    cars.forEach(c => { c.update(); c.draw(); });
     requestAnimationFrame(loop);
 }
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
 
 loop();
 </script>
