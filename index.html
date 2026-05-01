@@ -1,20 +1,20 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Full Cloverleaf Interchange Simulation</title>
+<title>Realistic Cloverleaf Simulation</title>
 <style>
   body { margin: 0; background: #1a1a1a; overflow: hidden; font-family: sans-serif; }
   canvas { display: block; background: #27ae60; }
   #status { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 15px; border-radius: 8px; pointer-events: none; }
-  b { color: #e74c3c; } /* Changed to match car color */
+  b { color: #e74c3c; }
 </style>
 </head>
 <body>
 
 <div id="status">
-  <b>Full Cloverleaf Interchange</b><br>
-  300 Cars | Directional Indicators<br>
-  Continuous Flow (No Lights)
+  <b>Realistic Cloverleaf</b><br>
+  300 Cars | Curved Outer Ramps<br>
+  Headlight/Taillight Directional Indicators
 </div>
 <canvas id="sim"></canvas>
 
@@ -22,18 +22,23 @@
 const canvas = document.getElementById("sim");
 const ctx = canvas.getContext("2d");
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
 
 const cx = canvas.width / 2;
 const cy = canvas.height / 2;
 const roadW = 50;
-const loopR = 80;  
-const rampR = 180; 
+const loopR = 90;   // The inner loops
+const rampDist = 220; // How far out the ramps start/end
 
-function createArc(centerX, centerY, radius, startAngle, endAngle, clockwise) {
+// --- MATH HELPERS ---
+function createArc(centerX, centerY, radius, startAngle, endAngle) {
     let points = [];
-    let steps = 15; 
+    let steps = 20; 
     let diff = endAngle - startAngle;
     for (let i = 0; i <= steps; i++) {
         let a = startAngle + (diff * (i / steps));
@@ -42,64 +47,74 @@ function createArc(centerX, centerY, radius, startAngle, endAngle, clockwise) {
     return points;
 }
 
+function createCurve(x1, y1, cpX, cpY, x2, y2) {
+    let points = [];
+    for (let t = 0; t <= 1; t += 0.05) {
+        let x = (1 - t) * (1 - t) * x1 + 2 * (1 - t) * t * cpX + t * t * x2;
+        let y = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * cpY + t * t * y2;
+        points.push({ x: x, y: y });
+    }
+    return points;
+}
+
+// --- PATH GENERATOR ---
 function generatePath() {
     let p = [];
     const directions = ['N', 'S', 'E', 'W'];
     const types = ['straight', 'right', 'loop'];
-    
     let start = directions[Math.floor(Math.random() * 4)];
     let type = types[Math.floor(Math.random() * 3)];
     const lane = 15;
 
-    if (start === 'W') {
+    if (start === 'W') { // From West
         if (type === 'straight') {
             for(let x = -100; x < canvas.width + 100; x += 100) p.push({x: x, y: cy + lane});
-        } else if (type === 'right') {
-            for(let x = -100; x < cx - rampR; x += 50) p.push({x: x, y: cy + lane});
-            p = p.concat(createArc(cx - rampR, cy + rampR, rampR - lane, Math.PI * 1.5, Math.PI * 2, true));
-            for(let y = cy + rampR; y < canvas.height + 100; y += 50) p.push({x: cx - lane, y: y});
-        } else { 
+        } else if (type === 'right') { // Outer Ramp to South
+            for(let x = -100; x < cx - rampDist; x += 50) p.push({x: x, y: cy + lane});
+            p = p.concat(createCurve(cx - rampDist, cy + lane, cx - rampDist, cy + rampDist, cx - lane, cy + rampDist));
+            for(let y = cy + rampDist; y < canvas.height + 100; y += 50) p.push({x: cx - lane, y: y});
+        } else { // Loop to North
             for(let x = -100; x < cx + loopR; x += 50) p.push({x: x, y: cy + lane});
-            p = p.concat(createArc(cx + loopR, cy + loopR, loopR - lane, Math.PI * 1.5, Math.PI * 3.5, true));
+            p = p.concat(createArc(cx + loopR, cy + loopR, loopR - lane, Math.PI * 1.5, Math.PI * 3.5));
             for(let y = cy + loopR; y > -100; y -= 50) p.push({x: cx + lane, y: y});
         }
     } 
-    else if (start === 'E') {
+    else if (start === 'E') { // From East
         if (type === 'straight') {
             for(let x = canvas.width + 100; x > -100; x -= 100) p.push({x: x, y: cy - lane});
-        } else if (type === 'right') {
-            for(let x = canvas.width + 100; x > cx + rampR; x -= 50) p.push({x: x, y: cy - lane});
-            p = p.concat(createArc(cx + rampR, cy - rampR, rampR - lane, Math.PI * 0.5, Math.PI, true));
-            for(let y = cy - rampR; y > -100; y -= 50) p.push({x: cx + lane, y: y});
-        } else {
+        } else if (type === 'right') { // Outer Ramp to North
+            for(let x = canvas.width + 100; x > cx + rampDist; x -= 50) p.push({x: x, y: cy - lane});
+            p = p.concat(createCurve(cx + rampDist, cy - lane, cx + rampDist, cy - rampDist, cx + lane, cy - rampDist));
+            for(let y = cy - rampDist; y > -100; y -= 50) p.push({x: cx + lane, y: y});
+        } else { // Loop to South
             for(let x = canvas.width + 100; x > cx - loopR; x -= 50) p.push({x: x, y: cy - lane});
-            p = p.concat(createArc(cx - loopR, cy - loopR, loopR - lane, Math.PI * 0.5, Math.PI * 2.5, true));
+            p = p.concat(createArc(cx - loopR, cy - loopR, loopR - lane, Math.PI * 0.5, Math.PI * 2.5));
             for(let y = cy - loopR; y < canvas.height + 100; y += 50) p.push({x: cx - lane, y: y});
         }
     }
-    else if (start === 'N') {
+    else if (start === 'N') { // From North
         if (type === 'straight') {
             for(let y = -100; y < canvas.height + 100; y += 100) p.push({x: cx - lane, y: y});
-        } else if (type === 'right') {
-            for(let y = -100; y < cy - rampR; y += 50) p.push({x: cx - lane, y: y});
-            p = p.concat(createArc(cx - rampR, cy - rampR, rampR - lane, 0, Math.PI * 0.5, true));
-            for(let x = cx - rampR; x > -100; x -= 50) p.push({x: x, y: cy - lane});
-        } else {
+        } else if (type === 'right') { // Outer Ramp to West
+            for(let y = -100; y < cy - rampDist; y += 50) p.push({x: cx - lane, y: y});
+            p = p.concat(createCurve(cx - lane, cy - rampDist, cx - rampDist, cy - rampDist, cx - rampDist, cy - lane));
+            for(let x = cx - rampDist; x > -100; x -= 50) p.push({x: x, y: cy - lane});
+        } else { // Loop to East
             for(let y = -100; y < cy + loopR; y += 50) p.push({x: cx - lane, y: y});
-            p = p.concat(createArc(cx - loopR, cy + loopR, loopR - lane, 0, Math.PI * 2, true));
+            p = p.concat(createArc(cx - loopR, cy + loopR, loopR - lane, 0, Math.PI * 2));
             for(let x = cx - loopR; x < canvas.width + 100; x += 50) p.push({x: x, y: cy + lane});
         }
     }
-    else if (start === 'S') {
+    else if (start === 'S') { // From South
         if (type === 'straight') {
             for(let y = canvas.height + 100; y > -100; y -= 100) p.push({x: cx + lane, y: y});
-        } else if (type === 'right') {
-            for(let y = canvas.height + 100; y > cy + rampR; y -= 50) p.push({x: cx + lane, y: y});
-            p = p.concat(createArc(cx + rampR, cy + rampR, rampR - lane, Math.PI, Math.PI * 1.5, true));
-            for(let x = cx + rampR; x < canvas.width + 100; x += 50) p.push({x: x, y: cy + lane});
-        } else {
+        } else if (type === 'right') { // Outer Ramp to East
+            for(let y = canvas.height + 100; y > cy + rampDist; y -= 50) p.push({x: cx + lane, y: y});
+            p = p.concat(createCurve(cx + lane, cy + rampDist, cx + rampDist, cy + rampDist, cx + rampDist, cy + lane));
+            for(let x = cx + rampDist; x < canvas.width + 100; x += 50) p.push({x: x, y: cy + lane});
+        } else { // Loop to West
             for(let y = canvas.height + 100; y > cy - loopR; y -= 50) p.push({x: cx + lane, y: y});
-            p = p.concat(createArc(cx + loopR, cy - loopR, loopR - lane, Math.PI, Math.PI * 3, true));
+            p = p.concat(createArc(cx + loopR, cy - loopR, loopR - lane, Math.PI, Math.PI * 3));
             for(let x = cx + loopR; x > -100; x -= 50) p.push({x: x, y: cy - lane});
         }
     }
@@ -113,8 +128,8 @@ class Car {
         this.index = isInitial ? Math.floor(Math.random() * (this.path.length - 1)) : 0;
         this.x = this.path[this.index].x;
         this.y = this.path[this.index].y;
-        this.speed = 1.5 + Math.random() * 2;
-        this.color = "#c0392b"; // Uniform Red
+        this.speed = 1.8 + Math.random() * 1.5;
+        this.color = "#c0392b";
         this.angle = 0;
     }
     update() {
@@ -133,22 +148,14 @@ class Car {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle);
-        
-        // Body
         ctx.fillStyle = this.color;
         ctx.fillRect(-12, -6, 24, 12);
-        
-        // Directional Indicators
-        // Headlights (White) - Front of car
-        ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
-        ctx.fillRect(8, -5, 4, 3); // Right headlight
-        ctx.fillRect(8, 2, 4, 3);  // Left headlight
-        
-        // Taillights (Dark Red) - Back of car
-        ctx.fillStyle = "#600";
-        ctx.fillRect(-12, -5, 2, 3);
-        ctx.fillRect(-12, 2, 2, 3);
-        
+        // Headlights
+        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.fillRect(9, -5, 4, 3); ctx.fillRect(9, 2, 4, 3);
+        // Taillights
+        ctx.fillStyle = "#500";
+        ctx.fillRect(-12, -5, 2, 3); ctx.fillRect(-12, 2, 2, 3);
         ctx.restore();
     }
 }
@@ -158,8 +165,14 @@ let cars = Array.from({length: 300}, () => new Car());
 function drawBackground() {
     ctx.strokeStyle = "#444";
     ctx.lineWidth = roadW;
-    
-    // Draw Loops
+    ctx.lineCap = "round";
+
+    // Main Roads
+    ctx.beginPath();
+    ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy);
+    ctx.stroke();
+
+    // Loops
     ctx.beginPath();
     ctx.arc(cx - loopR, cy + loopR, loopR, 0, Math.PI * 2);
     ctx.arc(cx + loopR, cy - loopR, loopR, 0, Math.PI * 2);
@@ -167,28 +180,40 @@ function drawBackground() {
     ctx.arc(cx - loopR, cy - loopR, loopR, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Draw Ramps
+    // Outer Ramps (The curved corners)
     ctx.beginPath();
-    ctx.arc(cx - rampR, cy + rampR, rampR, Math.PI * 1.5, Math.PI * 2);
-    ctx.arc(cx + rampR, cy - rampR, rampR, Math.PI * 0.5, Math.PI);
-    ctx.arc(cx - rampR, cy - rampR, rampR, 0, Math.PI * 0.5);
-    ctx.arc(cx + rampR, cy + rampR, rampR, Math.PI, Math.PI * 1.5);
-    ctx.stroke();
-
-    // East-West Main Road
-    ctx.beginPath();
-    ctx.moveTo(0, cy); ctx.lineTo(canvas.width, cy);
+    // NW
+    ctx.moveTo(cx - lane, 0); 
+    ctx.quadraticCurveTo(cx - rampDist, cy - rampDist, 0, cy - lane);
+    // NE
+    ctx.moveTo(canvas.width, cy - lane); 
+    ctx.quadraticCurveTo(cx + rampDist, cy - rampDist, cx + lane, 0);
+    // SE
+    ctx.moveTo(cx + lane, canvas.height); 
+    ctx.quadraticCurveTo(cx + rampDist, cy + rampDist, canvas.width, cy + lane);
+    // SW
+    ctx.moveTo(0, cy + lane); 
+    ctx.quadraticCurveTo(cx - rampDist, cy + rampDist, cx - lane, canvas.height);
     ctx.stroke();
 
     // North-South Bridge (with shadow)
     ctx.save();
     ctx.shadowBlur = 15; ctx.shadowColor = "black";
-    ctx.strokeStyle = "#555";
+    ctx.strokeStyle = "#4d4d4d";
     ctx.beginPath();
     ctx.moveTo(cx, 0); ctx.lineTo(cx, canvas.height);
     ctx.stroke();
     ctx.restore();
+
+    // Road markings (optional but adds realism)
+    ctx.strokeStyle = "rgba(255,255,255,0.2)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 15]);
+    ctx.stroke();
+    ctx.setLineDash([]);
 }
+
+const lane = 15; // Refined lane offset
 
 function loop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -196,11 +221,6 @@ function loop() {
     cars.forEach(c => { c.update(); c.draw(); });
     requestAnimationFrame(loop);
 }
-
-window.addEventListener('resize', () => {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-});
 
 loop();
 </script>
