@@ -2,57 +2,47 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Authentic Cloverleaf Interchange (v5.0)</title>
+    <title>Precision Aerial Cloverleaf Simulation</title>
     <style>
         body { margin: 0; background: #1a1a1a; overflow: hidden; font-family: sans-serif; }
-        canvas { display: block; background: #225a27; /* Matching the darker green grass */ box-shadow: inset 0 0 100px rgba(0,0,0,0.5); }
-        .hud { position: absolute; top: 15px; left: 15px; color: white; background: rgba(0,0,0,0.8); padding: 12px; border-radius: 6px; pointer-events: none; }
+        canvas { display: block; background: #2d4c1e; }
+        .ui { position: absolute; top: 20px; left: 20px; color: white; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 4px; pointer-events: none; border-left: 4px solid #777; }
     </style>
 </head>
 <body>
-    <div class="hud">
-        <b>Highway Interchange v5.0</b><br>
-        • Dual Carriageways with Medians<br>
-        • Layered Bridges<br>
-        • Unified Directional Fleet
+    <div class="ui">
+        <b>Interchange Model #199998956</b><br>
+        Tapered Exit/Entry Geometries<br>
+        Dual-Carriageway Pathfinding
     </div>
-    <canvas id="sim"></canvas>
+    <canvas id="simCanvas"></canvas>
 
 <script>
-const canvas = document.getElementById('sim');
+const canvas = document.getElementById('simCanvas');
 const ctx = canvas.getContext('2d');
 let cars = [];
 
-// Infrastructure configuration
-const config = {
-    carriagewayW: 32,    // Width of one side of the highway
-    medianW: 10,         // Width of the central grass median
-    loopR: 85,           // Radius of cloverleaf loops
-    rampOffset: 300,     // Distance from center where outer ramps merge/diverge
-    loopOffset: 120,     // Distance from center where inner loops merge/diverge
-    center: { x: 0, y: 0 }
-};
+const SCALE = 1.0;
+const ROAD_COLOR = "#3b3d3b";
+const LINE_COLOR = "rgba(255,255,255,0.4)";
+const MEDIAN_W = 12;
+const LANE_W = 28;
+const HIGHWAY_W = (LANE_W * 2); // 2 lanes per side
 
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    config.center.x = canvas.width / 2;
-    config.center.y = canvas.height / 2;
 }
 window.addEventListener('resize', resize);
 resize();
 
 class Car {
-    constructor(directionIndex) {
-        this.dir = directionIndex; // 0:N, 1:E, 2:S, 3:W
+    constructor(laneIdx) {
+        this.dir = laneIdx; // 0:N, 1:E, 2:S, 3:W
+        this.type = Math.random() < 0.2 ? 'right' : (Math.random() < 0.4 ? 'loop' : 'straight');
+        this.speed = 3 + Math.random() * 2;
         this.progress = 0;
-        this.speed = 3 + Math.random() * 2.5;
-        this.color = "#ecf0f1"; // fleet color
         this.x = 0; this.y = 0; this.angle = 0;
-        
-        const r = Math.random();
-        this.type = r < 0.2 ? 'right' : (r < 0.5 ? 'loop' : 'straight');
-        // E-W road (1,3) goes over N-S road (0,2) based on reference image shadow
         this.isOverpass = (this.dir === 1 || this.dir === 3);
     }
 
@@ -60,32 +50,38 @@ class Car {
         const oldX = this.x; const oldY = this.y;
         this.progress += this.speed;
         
-        // Target lane offset: lane offset (16) + half median (5) = 21
-        let tx = (config.carriagewayW/2 + config.medianW/2);
+        let tx = (MEDIAN_W / 2) + (LANE_W / 2); // Center of the right-hand lanes
         let ty = 600 - this.progress;
 
+        // PATH LOGIC - Matching the tapered curves in the photo
         if (this.type === 'right') {
-            const startExit = 600 - config.rampOffset;
-            if (this.progress > startExit) {
-                let t = (this.progress - startExit) * 0.005;
-                tx = 21 + Math.pow(t * 180, 1.1);
-                ty = config.rampOffset - (t * 120);
+            // Outer Sweeping Ramp
+            if (this.progress > 300) {
+                let t = (this.progress - 300) * 0.004;
+                tx += Math.pow(t * 150, 1.3);
+                ty = 300 - (t * 100);
             }
         } else if (this.type === 'loop') {
-            const startLoop = 600 - config.loopOffset;
-            if (this.progress > startLoop && this.progress < 1100) {
-                let a = (this.progress - startLoop) * 0.013;
-                tx = (21 + config.loopR) - Math.cos(a) * config.loopR;
-                ty = (config.loopOffset - config.loopR) - Math.sin(a) * config.loopR;
-            } else if (this.progress >= 1100) {
-                tx = 21 + (this.progress - 1100);
-                ty = -(config.loopR - 20);
+            // The "Leaf" Loop
+            if (this.progress > 450 && this.progress < 1050) {
+                let t = (this.progress - 450) * 0.012;
+                // Complex spiral-to-circle transition
+                const r = 85 + Math.sin(t*0.5)*10; 
+                tx = ( (MEDIAN_W/2 + LANE_W/2) + r) - Math.cos(t) * r;
+                ty = (150 - r) - Math.sin(t) * r;
+            } else if (this.progress >= 1050) {
+                tx = (MEDIAN_W/2 + LANE_W/2) + (this.progress - 1050);
+                ty = -70; // Offset for merging into the cross-street
             }
         }
 
+        // Translation to Global Coordinates
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
         const rot = (this.dir * Math.PI) / 2;
-        this.x = config.center.x + (tx * Math.cos(rot) - ty * Math.sin(rot));
-        this.y = config.center.y + (tx * Math.sin(rot) + ty * Math.cos(rot));
+        
+        this.x = centerX + (tx * Math.cos(rot) - ty * Math.sin(rot));
+        this.y = centerY + (tx * Math.sin(rot) + ty * Math.cos(rot));
         this.angle = Math.atan2(this.y - oldY, this.x - oldX) + Math.PI/2;
     }
 
@@ -93,89 +89,108 @@ class Car {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle);
-        ctx.fillStyle = this.color;
-        ctx.fillRect(-6, -10, 12, 20); // Body
-        ctx.fillStyle = "#2c3e50"; ctx.fillRect(-4, -6, 8, 7); // Windshield
-        // Directional lights
-        ctx.shadowBlur = 8; ctx.shadowColor = "#ffff00"; ctx.fillStyle = "#ffff00";
-        ctx.fillRect(-5, -11, 3, 2); ctx.fillRect(2, -11, 3, 2);
-        ctx.shadowBlur = 4; ctx.shadowColor = "#ff0000"; ctx.fillStyle = "#ff0000";
-        ctx.fillRect(-5, 9, 3, 1); ctx.fillRect(2, 9, 3, 1);
+        ctx.fillStyle = "#eee";
+        ctx.fillRect(-5, -9, 10, 18); // Car body
+        ctx.fillStyle = "#333";
+        ctx.fillRect(-3, -5, 6, 6);   // Windshield
+        // Headlights
+        ctx.fillStyle = "#fffca8"; ctx.shadowBlur = 6; ctx.shadowColor = "#fffca8";
+        ctx.fillRect(-4, -10, 2, 2); ctx.fillRect(2, -10, 2, 2);
         ctx.restore();
         ctx.shadowBlur = 0;
     }
 }
 
-function drawDualHighway(isVertical, width, center) {
-    ctx.strokeStyle = "#3d3d3d"; // Dark asphalt
-    ctx.lineWidth = width;
-    const offset = width/2 + config.medianW/2;
-    
+function drawRoadway() {
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+
+    // 1. Draw Underpass Shadows (Depth effect)
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.fillRect(cx - 150, cy - (HIGHWAY_W + MEDIAN_W/2 + 10), 300, 5);
+    ctx.fillRect(cx - 150, cy + (HIGHWAY_W + MEDIAN_W/2 + 5), 300, 5);
+
+    // 2. Draw North-South Highway (Bottom Road)
+    drawHighway(cx, cy, true);
+
+    // 3. Draw Ramps & Loops
+    drawRamps(cx, cy);
+
+    // 4. Draw East-West Highway (The Overpass)
+    // Add bridge structure
+    ctx.fillStyle = "#222"; // Side walls of the bridge
+    ctx.fillRect(0, cy - (HIGHWAY_W + MEDIAN_W/2 + 4), canvas.width, (HIGHWAY_W * 2) + MEDIAN_W + 8);
+    drawHighway(cx, cy, false);
+}
+
+function drawHighway(cx, cy, isVertical) {
+    ctx.strokeStyle = ROAD_COLOR;
+    ctx.lineWidth = HIGHWAY_W;
+    const offset = (HIGHWAY_W / 2) + (MEDIAN_W / 2);
+
     ctx.beginPath();
     if (isVertical) {
-        ctx.moveTo(center.x - offset, 0); ctx.lineTo(center.x - offset, canvas.height);
-        ctx.moveTo(center.x + offset, 0); ctx.lineTo(center.x + offset, canvas.height);
+        ctx.moveTo(cx - offset, 0); ctx.lineTo(cx - offset, canvas.height);
+        ctx.moveTo(cx + offset, 0); ctx.lineTo(cx + offset, canvas.height);
     } else {
-        ctx.moveTo(0, center.y - offset); ctx.lineTo(canvas.width, center.y - offset);
-        ctx.moveTo(0, center.y + offset); ctx.lineTo(canvas.width, center.y + offset);
+        ctx.moveTo(0, cy - offset); ctx.lineTo(canvas.width, cy - offset);
+        ctx.moveTo(0, cy + offset); ctx.lineTo(canvas.width, cy + offset);
     }
     ctx.stroke();
-    
-    // Add white lane markings
-    ctx.strokeStyle = "rgba(255,255,255,0.15)"; ctx.lineWidth = 1.5; ctx.setLineDash([15, 20]);
+
+    // Lane Lines
+    ctx.strokeStyle = LINE_COLOR;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([10, 15]);
     ctx.stroke();
     ctx.setLineDash([]);
 }
 
-function drawRampsAndLoops(center) {
-    const { carriagewayW, medianW, loopR, rampOffset, loopOffset } = config;
-    ctx.strokeStyle = "#3d3d3d";
-    const roadOffset = carriagewayW/2 + medianW/2;
-
-    // Outer Ramps (The large quadratic arcs at the corners)
-    ctx.lineWidth = 30; // High speed ramps are slightly wider than loops
+function drawRamps(cx, cy) {
+    ctx.strokeStyle = ROAD_COLOR;
+    const roadOffset = (HIGHWAY_W / 2) + (MEDIAN_W / 2);
+    
     for (let i = 0; i < 4; i++) {
-        ctx.save(); ctx.translate(center.x, center.y); ctx.rotate(i * Math.PI/2);
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(i * Math.PI / 2);
+        
+        // Outer Ramp (Quadratic for that "sweeping" look)
+        ctx.lineWidth = 25;
         ctx.beginPath();
-        ctx.moveTo(roadOffset, rampOffset);
-        ctx.quadraticCurveTo(rampOffset, rampOffset, rampOffset, roadOffset);
-        ctx.stroke(); ctx.restore();
-    }
+        ctx.moveTo(roadOffset, 320);
+        ctx.quadraticCurveTo(320, 320, 320, roadOffset);
+        ctx.stroke();
 
-    // Inner Loops (Clover Leaves)
-    ctx.lineWidth = 26; // Transition loops are typically tighter/narrower
-    for (let i = 0; i < 4; i++) {
-        ctx.save(); ctx.translate(center.x, center.y); ctx.rotate(i * Math.PI/2);
+        // Inner Loop (Clover leaf)
+        ctx.lineWidth = 22;
         ctx.beginPath();
-        ctx.arc(roadOffset + loopR, loopOffset - loopR, loopR, 0.5 * Math.PI, 1.65 * Math.PI);
-        ctx.stroke(); ctx.restore();
+        const r = 85;
+        // The arc starts at a tangent to the highway
+        ctx.arc(roadOffset + r, 150 - r, r, 0.5 * Math.PI, 1.6 * Math.PI);
+        ctx.stroke();
+
+        ctx.restore();
     }
 }
 
 function animate() {
-    ctx.fillStyle = "#225a27"; // Dark Green Grass
+    ctx.fillStyle = "#2d4c1e"; // Field green
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Layer 1: Bottom Road (N-S)
-    drawDualHighway(true, config.carriagewayW, config.center);
-    // Layer 2: All ramps and loops
-    drawRampsAndLoops(config.center);
-    // Layer 3: Top Road (E-W Bridge)
-    drawDualHighway(false, config.carriagewayW, config.center);
 
-    // Dynamic Fleet
-    if (Math.random() < 0.08 && cars.length < 50) {
+    drawRoadway();
+
+    if (Math.random() < 0.07 && cars.length < 50) {
         cars.push(new Car(Math.floor(Math.random() * 4)));
     }
 
-    // Ensure cars on bridge are drawn last (over cars on the loops/underpass)
+    // Sort: Ensure cars on the E-W bridge are drawn last
     cars.sort((a, b) => a.isOverpass - b.isOverpass);
 
     for (let i = cars.length - 1; i >= 0; i--) {
         cars[i].update();
         cars[i].draw();
-        // Remove if far off screen
-        if (Math.abs(cars[i].x - config.center.x) > 1000 || Math.abs(cars[i].y - config.center.y) > 1000) {
+        if (Math.abs(cars[i].x - canvas.width/2) > 1000 || Math.abs(cars[i].y - canvas.height/2) > 1000) {
             cars.splice(i, 1);
         }
     }
