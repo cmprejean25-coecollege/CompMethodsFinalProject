@@ -3,20 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cloverleaf Interchange - Fixed Roads</title>
+    <title>Realistic Cloverleaf Simulation</title>
     <style>
-        body { margin: 0; background: #1a1a1a; display: flex; flex-direction: column; align-items: center; font-family: 'Segoe UI', sans-serif; color: white; overflow: hidden; }
-        .ui { padding: 15px; text-align: center; position: absolute; top: 10px; z-index: 10; pointer-events: none; }
-        button { pointer-events: auto; padding: 10px 25px; cursor: pointer; background: #e74c3c; border: none; color: white; border-radius: 4px; font-weight: 600; }
-        canvas { background: #27ae60; /* Grass background */ box-shadow: 0 0 50px rgba(0,0,0,0.5); }
+        body { margin: 0; background: #1a1a1a; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; overflow: hidden; }
+        canvas { background: #27ae60; cursor: crosshair; }
+        .info { position: absolute; top: 10px; left: 10px; color: white; pointer-events: none; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; }
     </style>
 </head>
 <body>
-
-    <div class="ui">
-        <h2>Cloverleaf Simulation</h2>
-        <p>Fixed Road Geometry & Directional Lighting</p>
-        <button onclick="addCar()">Add Car</button>
+    <div class="info">
+        <b>Cloverleaf Simulation</b><br>
+        Outer Ramps: Right Turns<br>
+        Inner Loops: Left Turns
     </div>
     <canvas id="simCanvas"></canvas>
 
@@ -25,7 +23,6 @@ const canvas = document.getElementById('simCanvas');
 const ctx = canvas.getContext('2d');
 let cars = [];
 
-// Setup Canvas Size
 function resize() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -34,55 +31,52 @@ window.addEventListener('resize', resize);
 resize();
 
 const center = { x: canvas.width/2, y: canvas.height/2 };
-const roadWidth = 70;
-const loopRadius = 85;
+const roadW = 60;   // Main road width
+const rampW = 30;   // Ramp width
+const loopR = 90;   // Radius of the clover loops
+const rampOffset = 180; // Distance from center where ramps start
 
 class Car {
     constructor(lane) {
-        this.lane = lane; 
-        this.speed = 2 + Math.random() * 2;
+        this.lane = lane; // 0:N, 1:E, 2:S, 3:W
+        this.type = Math.random() > 0.4 ? (Math.random() > 0.5 ? 'loop' : 'straight') : 'right';
+        this.speed = 2 + Math.random() * 1.5;
         this.progress = 0;
-        this.type = Math.floor(Math.random() * 3); // 0: Straight, 1: Right, 2: Left Loop
-        this.x = 0;
-        this.y = 0;
-        this.angle = 0;
+        this.x = 0; this.y = 0; this.angle = 0;
     }
 
     update() {
-        const oldX = this.x;
-        const oldY = this.y;
+        const oldX = this.x; const oldY = this.y;
         this.progress += this.speed;
-        
-        // Path logic relative to North-bound lane
-        let tx = 0, ty = 0;
-        let t = this.progress;
+        let tx = 20, ty = 600 - this.progress; // Start point (relative)
 
-        if (this.type === 0) { // Straight
-            tx = 20; ty = 500 - t;
-        } else if (this.type === 1) { // Right
-            if (t < 350) { tx = 20; ty = 500 - t; }
-            else {
-                let a = (t - 350) * 0.015;
-                tx = 20 + Math.sin(a) * 60;
-                ty = 150 - Math.cos(a) * 60;
+        if (this.type === 'straight') {
+            // No changes, stay in lane
+        } 
+        else if (this.type === 'right') {
+            // Use diagonal ramp
+            if (this.progress > 420) {
+                let t = (this.progress - 420) * 0.01;
+                tx = 20 + t * 150;
+                ty = 180 - t * 150;
             }
-        } else { // Loop Left
-            if (t < 400) { tx = 20; ty = 500 - t; }
-            else if (t < 850) {
-                let a = (t - 400) * 0.014;
-                tx = (20 + loopRadius) - Math.cos(a) * loopRadius;
-                ty = (100 - loopRadius/2) - Math.sin(a) * loopRadius;
-            } else {
-                tx = 20 + (t - 850);
-                ty = 10;
+        } 
+        else if (this.type === 'loop') {
+            // Enter inner clover loop
+            if (this.progress > 550 && this.progress < 950) {
+                let a = (this.progress - 550) * 0.014;
+                tx = (20 + loopR) - Math.cos(a) * loopR;
+                ty = (50 - loopR) - Math.sin(a) * loopR;
+            } else if (this.progress >= 950) {
+                tx = 20 + (this.progress - 950);
+                ty = -40;
             }
         }
 
-        // Global Rotation to move car to the correct starting side
+        // Rotate to world coordinates
         const rot = (this.lane * Math.PI) / 2;
         this.x = center.x + (tx * Math.cos(rot) - ty * Math.sin(rot));
         this.y = center.y + (tx * Math.sin(rot) + ty * Math.cos(rot));
-        
         this.angle = Math.atan2(this.y - oldY, this.x - oldX) + Math.PI/2;
     }
 
@@ -90,59 +84,56 @@ class Car {
         ctx.save();
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle);
-
-        // Car Body
         ctx.fillStyle = "#dfe6e9";
-        ctx.fillRect(-6, -10, 12, 20);
-        ctx.fillStyle = "#2d3436"; // Windshield
-        ctx.fillRect(-4, -5, 8, 6);
-
-        // Headlights (Front)
-        ctx.fillStyle = "#fff200";
-        ctx.shadowBlur = 8;
-        ctx.shadowColor = "#fff200";
-        ctx.fillRect(-5, -11, 3, 2);
+        ctx.fillRect(-6, -10, 12, 20); // Body
+        ctx.fillStyle = "#2d3436";
+        ctx.fillRect(-4, -5, 8, 6);   // Glass
+        ctx.fillStyle = "#fff200"; 
+        ctx.fillRect(-5, -11, 3, 2);  // Lights
         ctx.fillRect(2, -11, 3, 2);
-
-        // Tail lights (Back)
-        ctx.shadowBlur = 5;
-        ctx.shadowColor = "red";
-        ctx.fillStyle = "#ff0000";
-        ctx.fillRect(-5, 9, 3, 1);
-        ctx.fillRect(2, 9, 3, 1);
-
         ctx.restore();
-        ctx.shadowBlur = 0; // Reset glow for next drawing
     }
 }
 
-function drawRoads() {
-    ctx.lineJoin = "round";
+function drawInfrastructure() {
     ctx.lineCap = "round";
-
-    // 1. Asphalt Layer (Dark Grey)
     ctx.strokeStyle = "#3d3d3d";
-    ctx.lineWidth = roadWidth;
-    
-    // Main Cross
+
+    // 1. Draw Outer Ramps (Diagonal)
+    ctx.lineWidth = rampW;
+    for (let i = 0; i < 4; i++) {
+        ctx.save();
+        ctx.translate(center.x, center.y);
+        ctx.rotate((i * Math.PI) / 2);
+        ctx.beginPath();
+        ctx.moveTo(20, rampOffset);
+        ctx.lineTo(rampOffset, 20);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 2. Draw Inner Loops (Clover Leaves)
+    for (let i = 0; i < 4; i++) {
+        ctx.save();
+        ctx.translate(center.x, center.y);
+        ctx.rotate((i * Math.PI) / 2);
+        ctx.beginPath();
+        ctx.arc(20 + loopR, 50 - loopR, loopR, Math.PI * 0.5, Math.PI * 1.6);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // 3. Main Highways
+    ctx.lineWidth = roadW;
     ctx.beginPath();
     ctx.moveTo(center.x, 0); ctx.lineTo(center.x, canvas.height);
     ctx.moveTo(0, center.y); ctx.lineTo(canvas.width, center.y);
     ctx.stroke();
 
-    // The 4 Loops
-    const dist = 75;
-    [[1,1], [1,-1], [-1,1], [-1,-1]].forEach(([sx, sy]) => {
-        ctx.beginPath();
-        ctx.arc(center.x + (dist * sx), center.y + (dist * sy), loopRadius - 10, 0, Math.PI * 2);
-        ctx.stroke();
-    });
-
-    // 2. Road Markings (Yellow/White)
+    // 4. Markings
     ctx.strokeStyle = "#f1c40f";
     ctx.lineWidth = 2;
-    ctx.setLineDash([20, 20]);
-    
+    ctx.setLineDash([15, 15]);
     ctx.beginPath();
     ctx.moveTo(center.x, 0); ctx.lineTo(center.x, canvas.height);
     ctx.moveTo(0, center.y); ctx.lineTo(canvas.width, center.y);
@@ -150,30 +141,26 @@ function drawRoads() {
     ctx.setLineDash([]);
 }
 
-function addCar() {
-    cars.push(new Car(Math.floor(Math.random() * 4)));
-}
-
 function animate() {
-    // Clear with Grass Color
-    ctx.fillStyle = "#27ae60";
+    ctx.fillStyle = "#27ae60"; // Grass
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    drawRoads();
+    drawInfrastructure();
     
+    if (Math.random() < 0.05 && cars.length < 30) {
+        cars.push(new Car(Math.floor(Math.random() * 4)));
+    }
+
     for (let i = cars.length - 1; i >= 0; i--) {
         cars[i].update();
         cars[i].draw();
-        // Remove if way off screen
-        if (Math.abs(cars[i].x - center.x) > 1000 || Math.abs(cars[i].y - center.y) > 1000) {
+        if (Math.abs(cars[i].x - center.x) > canvas.width || Math.abs(cars[i].y - center.y) > canvas.height) {
             cars.splice(i, 1);
         }
     }
     requestAnimationFrame(animate);
 }
 
-// Auto-spawn cars
-setInterval(() => { if(cars.length < 25) addCar(); }, 600);
 animate();
 </script>
 </body>
