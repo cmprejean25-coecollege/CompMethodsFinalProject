@@ -1,255 +1,217 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Traffic Simulation - 300 Cars & Turns</title>
-<style>
-  body { margin: 0; background: #2c3e50; overflow: hidden; font-family: sans-serif; }
-  canvas { display: block; margin: auto; background: #27ae60; }
-  #uiOverlay, #crashOverlay, #winOverlay {
-    position: absolute; inset: 0; display: flex; align-items: center;
-    justify-content: center; flex-direction: column; color: white; pointer-events: none; text-align: center;
-  }
-  #uiOverlay { background: rgba(0,0,0,0.7); pointer-events: all; }
-  #crashOverlay { display: none; background: rgba(200,0,0,0.75); pointer-events: all; }
-  #winOverlay { display: none; background: rgba(39, 174, 96, 0.9); pointer-events: all; }
-  button { padding: 15px 30px; font-size: 20px; cursor: pointer; border: none; border-radius: 5px; background: white; color: #333; font-weight: bold; }
-  h1 { margin-bottom: 5px; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Traffic Simulation</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
+        canvas { display: block; background: #333; }
+        #stats { position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.5); padding: 10px; pointer-events: none; }
+    </style>
 </head>
 <body>
-
-<canvas id="simCanvas" width="800" height="600"></canvas>
-
-<div id="uiOverlay">
-  <h1>🚦 Traffic Simulation</h1>
-  <p>300 Cars | Turning Logic | Buffer Clearing</p>
-  <button onclick="reset()">START SIMULATION</button>
-</div>
-
-<div id="crashOverlay">
-  <h1>🚨 COLLISION DETECTED</h1>
-  <button onclick="reset()">RESTART</button>
-</div>
-
-<div id="winOverlay">
-  <h1>🏆 MISSION ACCOMPLISHED</h1>
-  <p>All 300 cars passed safely.</p>
-  <button onclick="reset()">PLAY AGAIN</button>
-</div>
+    <div id="stats">Cars: 300 | Intersection: Active</div>
+    <canvas id="sim"></canvas>
 
 <script>
-const canvas = document.getElementById("simCanvas");
-const ctx = canvas.getContext("2d");
-const roadWidth = 120;
-let running = false;
-let cars = [];
-let carsFinished = 0;
+const canvas = document.getElementById('sim');
+const ctx = canvas.getContext('2d');
 
-// Light System
-let lightState = "NS"; 
+let width, height;
+const cars = [];
+const carCount = 300;
+const laneWidth = 40;
+const intersectionSize = laneWidth * 4;
+
+// Traffic Light State
+let lightState = "NS_GREEN"; // NS_GREEN, NS_YELLOW, EW_GREEN, EW_YELLOW
 let timer = 0;
-const GREEN_TIME = 220;
-const BUFFER_TIME = 100;
-let nextPhase = "EW";
+
+function resize() {
+    width = canvas.width = window.innerWidth;
+    height = canvas.height = window.innerHeight;
+}
+
+window.addEventListener('resize', resize);
+resize();
 
 class Car {
-  constructor(x, y, dx, dy, color) {
-    this.x = x; this.y = y; 
-    this.dx = dx; this.dy = dy;
-    this.speed = 2.2;
-    this.width = 22; this.height = 12;
-    this.color = color;
-    this.crossed = false;
-    this.finished = false;
-    // Turn choice: 0=Straight, 1=Left, 2=Right
-    this.turnIntent = Math.floor(Math.random() * 3); 
-  }
-
-  update(frontCar) {
-    if (this.finished) return;
-
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
-    let canMove = true;
-
-    // 1. Follow distance
-    if (frontCar) {
-      let d = Math.hypot(this.x - frontCar.x, this.y - frontCar.y);
-      if (d < 45) canMove = false;
+    constructor() {
+        this.reset();
     }
 
-    // 2. Traffic Light Logic
-    if (!this.crossed) {
-        const isNS = (this.dy !== 0);
-        const distToCenter = Math.hypot(this.x - cx, this.y - cy);
-        const green = isNS ? (lightState === "NS") : (lightState === "EW");
-        // Stop at the edge of the intersection if light is red
-        if (!green && distToCenter < 100 && distToCenter > 60) canMove = false;
-    }
+    reset() {
+        // Randomly pick a starting direction: 0: North, 1: South, 2: East, 3: West
+        this.dir = Math.floor(Math.random() * 4);
+        this.speed = 0;
+        this.maxSpeed = 2 + Math.random() * 2;
+        this.accel = 0.1;
+        this.length = 20;
+        this.width = 12;
+        this.color = `hsl(${Math.random() * 360}, 70%, 60%)`;
+        this.turning = Math.random() < 0.3 ? (Math.random() < 0.5 ? 'left' : 'right') : 'straight';
+        this.hasTurned = false;
 
-    if (canMove) {
-      // 3. Turning Logic (Triggered at center)
-      if (!this.crossed && Math.abs(this.x - cx) < 5 && Math.abs(this.y - cy) < 5) {
-        if (this.turnIntent === 1) { // Left
-            let temp = this.dx; this.dx = this.dy; this.dy = -temp;
-        } else if (this.turnIntent === 2) { // Right
-            let temp = this.dx; this.dx = -this.dy; this.dy = temp;
+        const midX = width / 2;
+        const midY = height / 2;
+
+        if (this.dir === 0) { // Coming from North going South
+            this.x = midX + (Math.random() < 0.5 ? laneWidth / 2 : laneWidth * 1.5);
+            this.y = -Math.random() * 2000;
+            this.angle = Math.PI / 2;
+        } else if (this.dir === 1) { // Coming from South going North
+            this.x = midX - (Math.random() < 0.5 ? laneWidth / 2 : laneWidth * 1.5);
+            this.y = height + Math.random() * 2000;
+            this.angle = -Math.PI / 2;
+        } else if (this.dir === 2) { // Coming from East going West
+            this.x = width + Math.random() * 2000;
+            this.y = midY + (Math.random() < 0.5 ? laneWidth / 2 : laneWidth * 1.5);
+            this.angle = Math.PI;
+        } else { // Coming from West going East
+            this.x = -Math.random() * 2000;
+            this.y = midY - (Math.random() < 0.5 ? laneWidth / 2 : laneWidth * 1.5);
+            this.angle = 0;
         }
-        this.crossed = true;
-      }
-
-      this.x += this.dx * this.speed;
-      this.y += this.dy * this.speed;
-
-      // 4. Finish Logic
-      if (this.x < -50 || this.x > canvas.width + 50 || this.y < -50 || this.y > canvas.height + 50) {
-        this.finished = true;
-        carsFinished++;
-      }
-    }
-  }
-
-  draw() {
-    if (this.finished) return;
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    // Rotate car based on current direction
-    const angle = Math.atan2(this.dy, this.dx);
-    ctx.rotate(angle);
-    
-    ctx.fillStyle = this.color;
-    ctx.fillRect(-this.width/2, -this.height/2, this.width, this.height);
-    
-    // Windows
-    ctx.fillStyle = "rgba(255,255,255,0.3)";
-    ctx.fillRect(0, -this.height/2 + 2, 5, this.height - 4);
-    
-    // Headlights
-    ctx.fillStyle = "white";
-    ctx.fillRect(this.width/2 - 2, -this.height/2, 3, 3);
-    ctx.fillRect(this.width/2 - 2, this.height/2 - 3, 3, 3);
-    ctx.restore();
-  }
-}
-
-function updateLights() {
-  timer++;
-  if ((lightState === "NS" || lightState === "EW") && timer > GREEN_TIME) {
-    nextPhase = (lightState === "NS") ? "EW" : "NS";
-    lightState = "RED_ALL";
-    timer = 0;
-  } else if (lightState === "RED_ALL" && timer > BUFFER_TIME) {
-    lightState = nextPhase;
-    timer = 0;
-  }
-}
-
-function drawEnvironment() {
-  // Road surface
-  ctx.fillStyle = "#444";
-  ctx.fillRect(0, canvas.height/2 - roadWidth/2, canvas.width, roadWidth);
-  ctx.fillRect(canvas.width/2 - roadWidth/2, 0, roadWidth, canvas.height);
-
-  // Markings
-  ctx.strokeStyle = "white";
-  ctx.setLineDash([10, 10]);
-  ctx.strokeRect(canvas.width/2 - roadWidth/2, canvas.height/2 - roadWidth/2, roadWidth, roadWidth);
-
-  // Traffic Light Bulbs
-  const cx = canvas.width/2; const cy = canvas.height/2;
-  const off = roadWidth/2 + 20;
-
-  function drawBulb(x, y, active) {
-    ctx.fillStyle = active ? (lightState === "RED_ALL" ? "#f1c40f" : "#2ecc71") : "#e74c3c";
-    ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = "black"; ctx.lineWidth = 2; ctx.stroke();
-  }
-
-  drawBulb(cx - off, cy - off, lightState === "NS"); // North side
-  drawBulb(cx + off, cy + off, lightState === "NS"); // South side
-  drawBulb(cx + off, cy - off, lightState === "EW"); // East side
-  drawBulb(cx - off, cy + off, lightState === "EW"); // West side
-}
-
-function animate() {
-  if (!running) return;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawEnvironment();
-  updateLights();
-
-  for (let i = 0; i < cars.length; i++) {
-    let car = cars[i];
-    if (car.finished) continue;
-
-    let frontCar = null;
-    let minDist = 100;
-    for (let j = 0; j < cars.length; j++) {
-      let other = cars[j];
-      if (car === other || other.finished) continue;
-      // Simple detection: is other car ahead in our path?
-      const dist = Math.hypot(car.x - other.x, car.y - other.y);
-      if (dist < 50) {
-          // Check if 'other' is roughly in the direction 'car' is facing
-          const angleToOther = Math.atan2(other.y - car.y, other.x - car.x);
-          const carAngle = Math.atan2(car.dy, car.dx);
-          if (Math.abs(angleToOther - carAngle) < 0.5) {
-              frontCar = other; break;
-          }
-      }
     }
 
-    car.update(frontCar);
-    car.draw();
+    update() {
+        let sensorDist = 50;
+        let canGo = true;
 
-    // Collision Check (Intersection only)
-    if (Math.abs(car.x - 400) < 60 && Math.abs(car.y - 300) < 60) {
-        for (let j = i + 1; j < cars.length; j++) {
-            let other = cars[j];
-            if (other.finished) continue;
-            if (Math.hypot(car.x - other.x, car.y - other.y) < 18) {
-                running = false;
-                document.getElementById("crashOverlay").style.display = "flex";
+        // 1. Traffic Light Logic
+        const midX = width / 2;
+        const midY = height / 2;
+        const stopLine = intersectionSize / 2 + 10;
+
+        if (this.dir === 0 && this.y < midY - stopLine && this.y > midY - stopLine - 20) {
+            if (lightState !== "NS_GREEN") canGo = false;
+        } else if (this.dir === 1 && this.y > midY + stopLine && this.y < midY + stopLine + 20) {
+            if (lightState !== "NS_GREEN") canGo = false;
+        } else if (this.dir === 2 && this.x > midX + stopLine && this.x < midX + stopLine + 20) {
+            if (lightState !== "EW_GREEN") canGo = false;
+        } else if (this.dir === 3 && this.x < midX - stopLine && this.x > midX - stopLine - 20) {
+            if (lightState !== "EW_GREEN") canGo = false;
+        }
+
+        // 2. Collision Detection (Simple proximity to car in front)
+        cars.forEach(other => {
+            if (other === this) return;
+            let dx = other.x - this.x;
+            let dy = other.y - this.y;
+            let dist = Math.sqrt(dx*dx + dy*dy);
+            
+            // Check if car is ahead in the same path
+            if (dist < 40) {
+                let dot = (dx * Math.cos(this.angle) + dy * Math.sin(this.angle)) / dist;
+                if (dot > 0.8) canGo = false; 
             }
+        });
+
+        // Speed control
+        if (canGo) {
+            this.speed = Math.min(this.speed + this.accel, this.maxSpeed);
+        } else {
+            this.speed = Math.max(this.speed - this.accel * 2, 0);
+        }
+
+        // 3. Turning Logic in Intersection
+        const inIntersection = Math.abs(this.x - midX) < 20 && Math.abs(this.y - midY) < 20;
+        if (inIntersection && !this.hasTurned && this.turning !== 'straight') {
+            if (this.turning === 'left') this.angle -= Math.PI / 2;
+            if (this.turning === 'right') this.angle += Math.PI / 2;
+            this.hasTurned = true;
+        }
+
+        this.x += Math.cos(this.angle) * this.speed;
+        this.y += Math.sin(this.angle) * this.speed;
+
+        // Reset if off screen
+        if (this.x < -2100 || this.x > width + 2100 || this.y < -2100 || this.y > height + 2100) {
+            this.reset();
         }
     }
-  }
 
-  if (carsFinished >= 300) {
-    running = false;
-    document.getElementById("winOverlay").style.display = "flex";
-  }
-
-  requestAnimationFrame(animate);
+    draw() {
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+        ctx.fillStyle = this.color;
+        ctx.fillRect(-this.length/2, -this.width/2, this.length, this.width);
+        // Headlights
+        ctx.fillStyle = "white";
+        ctx.fillRect(this.length/2 - 2, -this.width/2, 2, 2);
+        ctx.fillRect(this.length/2 - 2, this.width/2 - 2, 2, 2);
+        ctx.restore();
+    }
 }
 
-function reset() {
-  cars = [];
-  carsFinished = 0;
-  timer = 0;
-  lightState = "NS";
-  running = true;
-  document.getElementById("uiOverlay").style.display = "none";
-  document.getElementById("crashOverlay").style.display = "none";
-  document.getElementById("winOverlay").style.display = "none";
-
-  const perLane = 75; // 75 * 4 = 300 cars
-  const colors = ["#3498db", "#e67e22", "#9b59b6", "#f1c40f", "#e74c3c"];
-  
-  for (let i = 0; i < perLane; i++) {
-    const spacing = 70;
-    const c = () => colors[Math.floor(Math.random() * colors.length)];
-    // West to East
-    cars.push(new Car(-(100 + i*spacing), 330, 1, 0, c()));
-    // East to West
-    cars.push(new Car(800 + (100 + i*spacing), 270, -1, 0, c()));
-    // North to South
-    cars.push(new Car(370, -(100 + i*spacing), 0, 1, c()));
-    // South to North
-    cars.push(new Car(430, 600 + (100 + i*spacing), 0, -1, c()));
-  }
-  animate();
+// Initialize Cars
+for (let i = 0; i < carCount; i++) {
+    cars.push(new Car());
 }
+
+function drawRoads() {
+    const midX = width / 2;
+    const midY = height / 2;
+
+    ctx.fillStyle = "#444";
+    // Horizontal Road
+    ctx.fillRect(0, midY - laneWidth * 2, width, laneWidth * 4);
+    // Vertical Road
+    ctx.fillRect(midX - laneWidth * 2, 0, laneWidth * 4, height);
+
+    // Markings
+    ctx.strokeStyle = "#fff";
+    ctx.setLineDash([20, 20]);
+    ctx.beginPath();
+    // Horizontal center
+    ctx.moveTo(0, midY); ctx.lineTo(width, midY);
+    // Vertical center
+    ctx.moveTo(midX, 0); ctx.lineTo(midX, height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    
+    // Draw Traffic Lights
+    drawLight(midX - 100, midY - 100, lightState === "NS_GREEN", lightState === "NS_YELLOW", lightState !== "NS_GREEN" && lightState !== "NS_YELLOW");
+    drawLight(midX + 80, midY + 80, lightState === "NS_GREEN", lightState === "NS_YELLOW", lightState !== "NS_GREEN" && lightState !== "NS_YELLOW");
+    drawLight(midX + 80, midY - 100, lightState === "EW_GREEN", lightState === "EW_YELLOW", lightState !== "EW_GREEN" && lightState !== "EW_YELLOW");
+    drawLight(midX - 100, midY + 80, lightState === "EW_GREEN", lightState === "EW_YELLOW", lightState !== "EW_GREEN" && lightState !== "EW_YELLOW");
+}
+
+function drawLight(x, y, g, yel, r) {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(x, y, 20, 50);
+    ctx.fillStyle = r ? "red" : "#300";
+    ctx.beginPath(); ctx.arc(x+10, y+10, 6, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = yel ? "yellow" : "#330";
+    ctx.beginPath(); ctx.arc(x+10, y+25, 6, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = g ? "#0f0" : "#030";
+    ctx.beginPath(); ctx.arc(x+10, y+40, 6, 0, Math.PI*2); ctx.fill();
+}
+
+function loop() {
+    ctx.clearRect(0, 0, width, height);
+    
+    // Update Light Logic
+    timer++;
+    if (timer < 300) lightState = "NS_GREEN";
+    else if (timer < 400) lightState = "NS_YELLOW";
+    else if (timer < 700) lightState = "EW_GREEN";
+    else if (timer < 800) lightState = "EW_YELLOW";
+    else timer = 0;
+
+    drawRoads();
+
+    cars.forEach(car => {
+        car.update();
+        car.draw();
+    });
+
+    requestAnimationFrame(loop);
+}
+
+loop();
 </script>
 </body>
 </html>
