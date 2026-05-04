@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cloverleaf Interchange Simulation</title>
+    <title>Cloverleaf Simulation - Directional Lighting</title>
     <style>
-        body { margin: 0; background: #2c3e50; display: flex; flex-direction: column; align-items: center; font-family: sans-serif; color: white; }
-        canvas { background: #34495e; box-shadow: 0 0 20px rgba(0,0,0,0.5); border-radius: 8px; margin-top: 20px; }
-        .controls { padding: 20px; text-align: center; }
-        button { padding: 10px 20px; cursor: pointer; background: #e67e22; border: none; color: white; border-radius: 5px; font-weight: bold; }
-        button:hover { background: #d35400; }
+        body { margin: 0; background: #1a1a1a; display: flex; flex-direction: column; align-items: center; font-family: 'Segoe UI', sans-serif; color: white; }
+        canvas { background: #2c3e50; border: 4px solid #34495e; border-radius: 12px; margin-top: 15px; }
+        .ui { padding: 15px; text-align: center; }
+        button { padding: 10px 25px; cursor: pointer; background: #3498db; border: none; color: white; border-radius: 4px; font-weight: 600; transition: 0.2s; }
+        button:hover { background: #2980b9; transform: scale(1.05); }
     </style>
 </head>
 <body>
 
-    <div class="controls">
-        <h1>Cloverleaf Interchange</h1>
-        <p>A 2D simulation of weaving traffic patterns.</p>
-        <button onclick="addCar()">Add Random Car</button>
+    <div class="ui">
+        <h2>Traffic Flow Analysis</h2>
+        <p>Unified fleet with directional headlamps</p>
+        <button onclick="addCar()">Deploy Vehicle</button>
     </div>
     <canvas id="simCanvas" width="800" height="800"></canvas>
 
@@ -26,107 +26,127 @@ const canvas = document.getElementById('simCanvas');
 const ctx = canvas.getContext('2d');
 const cars = [];
 
-// Configuration
-const roadWidth = 60;
+const roadWidth = 66;
 const center = 400;
-const loopRadius = 80;
+const loopRadius = 82;
 
 class Car {
     constructor(lane) {
-        this.lane = lane; // 0: North, 1: East, 2: South, 3: West
-        this.speed = 1.5 + Math.random() * 1.5;
+        this.lane = lane; 
+        this.speed = 1.8 + Math.random() * 1.2;
         this.progress = 0;
-        this.color = `hsl(${Math.random() * 360}, 70%, 60%)`;
-        this.type = Math.floor(Math.random() * 3); // 0: Straight, 1: Right, 2: Loop (Left)
+        this.type = Math.floor(Math.random() * 3); 
         this.x = 0;
         this.y = 0;
+        this.angle = 0;
+        // All cars now use this color
+        this.bodyColor = "#ecf0f1"; 
+        this.roofColor = "#bdc3c7";
     }
 
     update() {
+        const oldX = this.x;
+        const oldY = this.y;
         this.progress += this.speed;
         this.calculatePosition();
+        
+        // Calculate heading angle based on movement
+        this.angle = Math.atan2(this.y - oldY, this.x - oldX) + Math.PI/2;
     }
 
     calculatePosition() {
         let t = this.progress;
-        let x = 0, y = 0, angle = 0;
+        let x = 0, y = 0;
 
-        // Simplified logic for a North-bound car as a baseline
-        // Note: Real world cloverleafs involve complex Bezier transitions.
-        // This logic maps the 4 directions based on the lane index.
-        
+        // Base path logic (North-bound reference)
         if (this.type === 0) { // Straight
-            x = center + 15;
-            y = 800 - t;
+            x = center + 18;
+            y = 850 - t;
         } else if (this.type === 1) { // Right Turn
-            if (t < 350) { x = center + 15; y = 800 - t; }
+            if (t < 350) { x = center + 18; y = 850 - t; }
             else { 
-                let angle = (t - 350) * 0.01;
-                x = center + 15 + Math.sin(angle) * 50;
-                y = 450 - Math.cos(angle) * 50;
+                let angle = (t - 350) * 0.012;
+                x = center + 18 + Math.sin(angle) * 60;
+                y = 500 - Math.cos(angle) * 60;
             }
-        } else { // The Clover Leaf (Left turn loop)
-            if (t < 450) { x = center + 15; y = 800 - t; }
-            else if (t < 850) {
-                let loopT = (t - 450) * 0.015;
-                x = (center + 15 + loopRadius) - Math.cos(loopT) * loopRadius;
-                y = (center - 50) - Math.sin(loopT) * loopRadius;
+        } else { // Clover Loop
+            if (t < 440) { x = center + 18; y = 850 - t; }
+            else if (t < 880) {
+                let loopT = (t - 440) * 0.015;
+                x = (center + 18 + loopRadius) - Math.cos(loopT) * loopRadius;
+                y = (center - 55) - Math.sin(loopT) * loopRadius;
             } else {
-                x = center + 15 + (t - 850);
-                y = center - 15;
+                x = center + 18 + (t - 880);
+                y = center - 18;
             }
         }
 
-        // Rotate coordinates based on entry direction
+        // Apply global rotation for the 4 entry points
         const relX = x - center;
         const relY = y - center;
         const rot = (this.lane * Math.PI) / 2;
-        
         this.x = center + (relX * Math.cos(rot) - relY * Math.sin(rot));
         this.y = center + (relX * Math.sin(rot) + relY * Math.cos(rot));
     }
 
     draw() {
-        ctx.fillStyle = this.color;
         ctx.save();
         ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+
+        // Shadow
+        ctx.fillStyle = "rgba(0,0,0,0.2)";
+        ctx.fillRect(-6, -9, 14, 22);
+
+        // Main Car Body
+        ctx.fillStyle = this.bodyColor;
         ctx.fillRect(-6, -10, 12, 20);
+        
+        // Windshield/Roof
+        ctx.fillStyle = "#34495e";
+        ctx.fillRect(-4, -4, 8, 8);
+
+        // Headlights (Yellow)
+        ctx.fillStyle = "#f1c40f";
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = "#f1c40f";
+        ctx.fillRect(-5, -11, 3, 2); // Left light
+        ctx.fillRect(2, -11, 3, 2);  // Right light
+
         ctx.restore();
     }
 }
 
 function drawRoads() {
-    ctx.strokeStyle = "#7f8c8d";
+    // Pavement
+    ctx.strokeStyle = "#34495e";
     ctx.lineWidth = roadWidth;
-    
-    // Main Roads
     ctx.beginPath();
     ctx.moveTo(center, 0); ctx.lineTo(center, 800);
     ctx.moveTo(0, center); ctx.lineTo(800, center);
     ctx.stroke();
 
-    // Leaf Loops
-    ctx.lineWidth = 30;
-    ctx.beginPath();
-    // Top Right Leaf
-    ctx.arc(center + 60, center - 60, 50, 0, Math.PI * 2);
-    // Top Left Leaf
-    ctx.arc(center - 60, center - 60, 50, 0, Math.PI * 2);
-    // Bottom Right Leaf
-    ctx.arc(center + 60, center + 60, 50, 0, Math.PI * 2);
-    // Bottom Left Leaf
-    ctx.arc(center - 60, center + 60, 50, 0, Math.PI * 2);
-    ctx.stroke();
-    
-    // Center lines
-    ctx.setLineDash([20, 20]);
-    ctx.strokeStyle = "#f1c40f";
+    // Loops
+    ctx.lineWidth = 32;
+    const offsets = [68, -68];
+    offsets.forEach(ox => {
+        offsets.forEach(oy => {
+            ctx.beginPath();
+            ctx.arc(center + ox, center + oy, 52, 0, Math.PI * 2);
+            ctx.stroke();
+        });
+    });
+
+    // Markings
+    ctx.strokeStyle = "rgba(255,255,255,0.3)";
+    ctx.setLineDash([10, 15]);
     ctx.lineWidth = 2;
+    ctx.stroke(); // Draws the markings on the loops
+    
     ctx.beginPath();
     ctx.moveTo(center, 0); ctx.lineTo(center, 800);
     ctx.moveTo(0, center); ctx.lineTo(800, center);
     ctx.stroke();
-    ctx.setLineDash([]);
 }
 
 function addCar() {
@@ -140,16 +160,15 @@ function animate() {
     for (let i = cars.length - 1; i >= 0; i--) {
         cars[i].update();
         cars[i].draw();
-        // Remove off-screen cars
-        if (cars[i].x < -50 || cars[i].x > 850 || cars[i].y < -50 || cars[i].y > 850) {
+        if (cars[i].x < -100 || cars[i].x > 900 || cars[i].y < -100 || cars[i].y > 900) {
             cars.splice(i, 1);
         }
     }
     requestAnimationFrame(animate);
 }
 
-// Start with some cars
-for(let i=0; i<8; i++) addCar();
+// Populate and Start
+setInterval(() => { if(cars.length < 20) addCar(); }, 800);
 animate();
 </script>
 </body>
