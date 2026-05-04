@@ -3,90 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cloverleaf Simulation - Directional Lighting</title>
+    <title>Cloverleaf Interchange - Fixed Roads</title>
     <style>
-        body { margin: 0; background: #1a1a1a; display: flex; flex-direction: column; align-items: center; font-family: 'Segoe UI', sans-serif; color: white; }
-        canvas { background: #2c3e50; border: 4px solid #34495e; border-radius: 12px; margin-top: 15px; }
-        .ui { padding: 15px; text-align: center; }
-        button { padding: 10px 25px; cursor: pointer; background: #3498db; border: none; color: white; border-radius: 4px; font-weight: 600; transition: 0.2s; }
-        button:hover { background: #2980b9; transform: scale(1.05); }
+        body { margin: 0; background: #1a1a1a; display: flex; flex-direction: column; align-items: center; font-family: 'Segoe UI', sans-serif; color: white; overflow: hidden; }
+        .ui { padding: 15px; text-align: center; position: absolute; top: 10px; z-index: 10; pointer-events: none; }
+        button { pointer-events: auto; padding: 10px 25px; cursor: pointer; background: #e74c3c; border: none; color: white; border-radius: 4px; font-weight: 600; }
+        canvas { background: #27ae60; /* Grass background */ box-shadow: 0 0 50px rgba(0,0,0,0.5); }
     </style>
 </head>
 <body>
 
     <div class="ui">
-        <h2>Traffic Flow Analysis</h2>
-        <p>Unified fleet with directional headlamps</p>
-        <button onclick="addCar()">Deploy Vehicle</button>
+        <h2>Cloverleaf Simulation</h2>
+        <p>Fixed Road Geometry & Directional Lighting</p>
+        <button onclick="addCar()">Add Car</button>
     </div>
-    <canvas id="simCanvas" width="800" height="800"></canvas>
+    <canvas id="simCanvas"></canvas>
 
 <script>
 const canvas = document.getElementById('simCanvas');
 const ctx = canvas.getContext('2d');
-const cars = [];
+let cars = [];
 
-const roadWidth = 66;
-const center = 400;
-const loopRadius = 82;
+// Setup Canvas Size
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+const center = { x: canvas.width/2, y: canvas.height/2 };
+const roadWidth = 70;
+const loopRadius = 85;
 
 class Car {
     constructor(lane) {
         this.lane = lane; 
-        this.speed = 1.8 + Math.random() * 1.2;
+        this.speed = 2 + Math.random() * 2;
         this.progress = 0;
-        this.type = Math.floor(Math.random() * 3); 
+        this.type = Math.floor(Math.random() * 3); // 0: Straight, 1: Right, 2: Left Loop
         this.x = 0;
         this.y = 0;
         this.angle = 0;
-        // All cars now use this color
-        this.bodyColor = "#ecf0f1"; 
-        this.roofColor = "#bdc3c7";
     }
 
     update() {
         const oldX = this.x;
         const oldY = this.y;
         this.progress += this.speed;
-        this.calculatePosition();
         
-        // Calculate heading angle based on movement
-        this.angle = Math.atan2(this.y - oldY, this.x - oldX) + Math.PI/2;
-    }
-
-    calculatePosition() {
+        // Path logic relative to North-bound lane
+        let tx = 0, ty = 0;
         let t = this.progress;
-        let x = 0, y = 0;
 
-        // Base path logic (North-bound reference)
         if (this.type === 0) { // Straight
-            x = center + 18;
-            y = 850 - t;
-        } else if (this.type === 1) { // Right Turn
-            if (t < 350) { x = center + 18; y = 850 - t; }
-            else { 
-                let angle = (t - 350) * 0.012;
-                x = center + 18 + Math.sin(angle) * 60;
-                y = 500 - Math.cos(angle) * 60;
+            tx = 20; ty = 500 - t;
+        } else if (this.type === 1) { // Right
+            if (t < 350) { tx = 20; ty = 500 - t; }
+            else {
+                let a = (t - 350) * 0.015;
+                tx = 20 + Math.sin(a) * 60;
+                ty = 150 - Math.cos(a) * 60;
             }
-        } else { // Clover Loop
-            if (t < 440) { x = center + 18; y = 850 - t; }
-            else if (t < 880) {
-                let loopT = (t - 440) * 0.015;
-                x = (center + 18 + loopRadius) - Math.cos(loopT) * loopRadius;
-                y = (center - 55) - Math.sin(loopT) * loopRadius;
+        } else { // Loop Left
+            if (t < 400) { tx = 20; ty = 500 - t; }
+            else if (t < 850) {
+                let a = (t - 400) * 0.014;
+                tx = (20 + loopRadius) - Math.cos(a) * loopRadius;
+                ty = (100 - loopRadius/2) - Math.sin(a) * loopRadius;
             } else {
-                x = center + 18 + (t - 880);
-                y = center - 18;
+                tx = 20 + (t - 850);
+                ty = 10;
             }
         }
 
-        // Apply global rotation for the 4 entry points
-        const relX = x - center;
-        const relY = y - center;
+        // Global Rotation to move car to the correct starting side
         const rot = (this.lane * Math.PI) / 2;
-        this.x = center + (relX * Math.cos(rot) - relY * Math.sin(rot));
-        this.y = center + (relX * Math.sin(rot) + relY * Math.cos(rot));
+        this.x = center.x + (tx * Math.cos(rot) - ty * Math.sin(rot));
+        this.y = center.y + (tx * Math.sin(rot) + ty * Math.cos(rot));
+        
+        this.angle = Math.atan2(this.y - oldY, this.x - oldX) + Math.PI/2;
     }
 
     draw() {
@@ -94,59 +91,63 @@ class Car {
         ctx.translate(this.x, this.y);
         ctx.rotate(this.angle);
 
-        // Shadow
-        ctx.fillStyle = "rgba(0,0,0,0.2)";
-        ctx.fillRect(-6, -9, 14, 22);
-
-        // Main Car Body
-        ctx.fillStyle = this.bodyColor;
+        // Car Body
+        ctx.fillStyle = "#dfe6e9";
         ctx.fillRect(-6, -10, 12, 20);
-        
-        // Windshield/Roof
-        ctx.fillStyle = "#34495e";
-        ctx.fillRect(-4, -4, 8, 8);
+        ctx.fillStyle = "#2d3436"; // Windshield
+        ctx.fillRect(-4, -5, 8, 6);
 
-        // Headlights (Yellow)
-        ctx.fillStyle = "#f1c40f";
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = "#f1c40f";
-        ctx.fillRect(-5, -11, 3, 2); // Left light
-        ctx.fillRect(2, -11, 3, 2);  // Right light
+        // Headlights (Front)
+        ctx.fillStyle = "#fff200";
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = "#fff200";
+        ctx.fillRect(-5, -11, 3, 2);
+        ctx.fillRect(2, -11, 3, 2);
+
+        // Tail lights (Back)
+        ctx.shadowBlur = 5;
+        ctx.shadowColor = "red";
+        ctx.fillStyle = "#ff0000";
+        ctx.fillRect(-5, 9, 3, 1);
+        ctx.fillRect(2, 9, 3, 1);
 
         ctx.restore();
+        ctx.shadowBlur = 0; // Reset glow for next drawing
     }
 }
 
 function drawRoads() {
-    // Pavement
-    ctx.strokeStyle = "#34495e";
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    // 1. Asphalt Layer (Dark Grey)
+    ctx.strokeStyle = "#3d3d3d";
     ctx.lineWidth = roadWidth;
+    
+    // Main Cross
     ctx.beginPath();
-    ctx.moveTo(center, 0); ctx.lineTo(center, 800);
-    ctx.moveTo(0, center); ctx.lineTo(800, center);
+    ctx.moveTo(center.x, 0); ctx.lineTo(center.x, canvas.height);
+    ctx.moveTo(0, center.y); ctx.lineTo(canvas.width, center.y);
     ctx.stroke();
 
-    // Loops
-    ctx.lineWidth = 32;
-    const offsets = [68, -68];
-    offsets.forEach(ox => {
-        offsets.forEach(oy => {
-            ctx.beginPath();
-            ctx.arc(center + ox, center + oy, 52, 0, Math.PI * 2);
-            ctx.stroke();
-        });
+    // The 4 Loops
+    const dist = 75;
+    [[1,1], [1,-1], [-1,1], [-1,-1]].forEach(([sx, sy]) => {
+        ctx.beginPath();
+        ctx.arc(center.x + (dist * sx), center.y + (dist * sy), loopRadius - 10, 0, Math.PI * 2);
+        ctx.stroke();
     });
 
-    // Markings
-    ctx.strokeStyle = "rgba(255,255,255,0.3)";
-    ctx.setLineDash([10, 15]);
+    // 2. Road Markings (Yellow/White)
+    ctx.strokeStyle = "#f1c40f";
     ctx.lineWidth = 2;
-    ctx.stroke(); // Draws the markings on the loops
+    ctx.setLineDash([20, 20]);
     
     ctx.beginPath();
-    ctx.moveTo(center, 0); ctx.lineTo(center, 800);
-    ctx.moveTo(0, center); ctx.lineTo(800, center);
+    ctx.moveTo(center.x, 0); ctx.lineTo(center.x, canvas.height);
+    ctx.moveTo(0, center.y); ctx.lineTo(canvas.width, center.y);
     ctx.stroke();
+    ctx.setLineDash([]);
 }
 
 function addCar() {
@@ -154,21 +155,25 @@ function addCar() {
 }
 
 function animate() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Clear with Grass Color
+    ctx.fillStyle = "#27ae60";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
     drawRoads();
     
     for (let i = cars.length - 1; i >= 0; i--) {
         cars[i].update();
         cars[i].draw();
-        if (cars[i].x < -100 || cars[i].x > 900 || cars[i].y < -100 || cars[i].y > 900) {
+        // Remove if way off screen
+        if (Math.abs(cars[i].x - center.x) > 1000 || Math.abs(cars[i].y - center.y) > 1000) {
             cars.splice(i, 1);
         }
     }
     requestAnimationFrame(animate);
 }
 
-// Populate and Start
-setInterval(() => { if(cars.length < 20) addCar(); }, 800);
+// Auto-spawn cars
+setInterval(() => { if(cars.length < 25) addCar(); }, 600);
 animate();
 </script>
 </body>
