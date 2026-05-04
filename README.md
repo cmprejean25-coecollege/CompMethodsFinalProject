@@ -1,8 +1,6 @@
 Traffic Simulation Project.
 This ReadMe helps explain every part of the traffic simulation code in detail. The goal of this is to help someone who does NOT know HTML, CSS, or JavaScript with understanding exactly how the program works step by step.
 
- # Full Simulation: https://cmprejean25-coecollege.github.io/CompMethodsFinalProject/
-
 To make the concepts in this simulation easier to understand, the accompanying Google Colab notebook shows a simplified version of the system that focuses only on one core mechanics: movement. While the full program includes multiple interacting systems like traffic lights, collision detection, and UI overlays, the notebook strips them away and serves to provide a base control so you can see how car behavior would look like without traffic lights.
  
  # Simplified Collab Notebook Version: https://colab.research.google.com/drive/1V2YrZswGk3d_Hpr7gHRd_o4NQYIwPDa8?usp=sharing
